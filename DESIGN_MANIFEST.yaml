@@ -1,0 +1,112 @@
+manifest_version: 1
+
+# Copy the card above for these remaining slots:
+#
+# pre_boss_spear
+global:
+progression_family_cap: #0
+bonus_spear_cap: null
+
+weapon:
+  slot: Pre-boss spear
+  internal_name: GoldSpear
+  display_name: Gold Spear
+  tooltip: "Trusty spear smeared with gold."
+  theme_summary: "A gold javelin that can be thrown and embedded in enemies. It has a chance to inflict the 'Midas' debuff, causing enemies to drop more coins when killed"
+
+  balance:
+    vanilla_weapon_benchmark: "Pre-boss spear, single-target melee weapon"
+    damage_class: MeleeNoSpeed
+    base_damage: 15
+    use_time_ticks: 32
+    use_animation_ticks: 16
+    knockback: 5
+    extra_crit: 0
+    shoot_speed:
+      raw: 10
+      effective: 10
+    rarity: "ItemRarityID.White (0)"
+    sell_value: "2 Silver"
+    use_sound: "SoundID.Item1"
+    auto_reuse: true
+    research_unlock_count: 1
+
+
+  acquisition:
+    predecessor: none
+    ingredients: 
+      - item: Gold Bar 
+        quantity: 10
+      - item: Wood
+        quantity: 5
+    crafting_station: workbench
+
+
+flight:
+    flight_lifetime_seconds: approximately 30
+    gravity_delay_seconds: 0.375
+    horizontal_drag: "Velocity X x 0.995 per projectile update after the delay"
+    gravity_strength: "+0.15 Y velocity per projectile update after the delay"
+    maximum_fall_speed: "No spear-specific cap"
+    homing: none
+    other_behavior:
+        - "MaxUpdates = 2"
+        - "16x16 projectile hitbox"
+        - "10x10 tile-collision hitbox"
+        - "Ignores water resistance"
+        - "Melee-speed bonuses increase velocity but not firing rate"
+        - "Fades in after being thrown"
+    special_behavior: none
+
+impact:
+  damage_multiplier: 1.0
+  can_crit: false
+  ignores_defense: false
+  debuffs:
+    - name: Midas
+      chance: 50%
+      duration_seconds: 5
+  secondary_effects:
+    - "Embeds into the struck NPC after dealing direct damage once"
+
+embedded:
+  duration_seconds: 5
+  fixed_dot_dps_per_spear: 0
+  dot_ignores_defense: true
+  visual_debuff:
+      internal_name: Midas
+      display_name: Midas
+      tooltip: "Chance to drop more coins when killed."
+      buff_id: 72
+  special_behavior:
+      - "Each embedded spear has an independent five-second duration"
+
+visuals:
+  light_color_and_strength: "Refer to the 'Gold Spear' projectile's light emission in Terraria"
+  flight_dust: "Gold dust particles emitted during flight"
+  embedded_dust: "Gold dust particles emitted while embedded in an enemy"
+  burst_dust: "Gold dust particles emitted upon impact and burst"
+  trail_behavior: 
+    - "Trail follows the spear's path during flight"
+    - "Trail fades out after the spear is no longer in flight"
+  impact_sound: "No specific impact sound"
+  embedded_sound: none
+
+art:
+  item_png: "spears/PreBossSpear.png"
+  projectile_png: "gold_ore"
+  trail_png: none
+  debuff_icon_png: "Buff_72"
+  glow_masks: "Vanilla glow mask for Gold Spear projectile"
+
+
+# post_eater_of_worlds_corruption
+# post_brain_of_cthulhu_crimson
+# post_wall_of_flesh
+# post_destroyer
+# post_twins
+# post_skeletron_prime
+# post_plantera
+# post_golem
+# post_moon_lord_endgame
+# moon_lord_bonus_test_spear
