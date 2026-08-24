@@ -26,4 +26,3 @@ internal enum SpearSecondaryKind : byte
 	IdentityCopy,
 	OrbitalBolt
 }
-

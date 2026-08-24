@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class Frightsteel : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Frightsteel;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Frightsteel;
 
 	public override void AddRecipes()
 	{

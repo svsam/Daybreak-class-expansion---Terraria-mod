@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
@@ -18,6 +17,7 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 {
 	private bool _initialized;
 	private int _preferredTargetOrdinal;
+	private int _nextTargetSearchUpdate;
 
 	private SpearSecondaryKind SecondaryKind => (SpearSecondaryKind)(int)Projectile.ai[0];
 	private int TargetIndex {
@@ -60,7 +60,6 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		int index = Projectile.NewProjectile(source, position, velocity, ModContent.ProjectileType<SpearSecondaryProjectile>(), damage, knockback, owner, (float)secondaryKind, targetIndex + 1, (float)identity);
 		if (index >= 0 && index < Main.maxProjectiles && Main.projectile[index].ModProjectile is SpearSecondaryProjectile secondary) {
 			secondary._preferredTargetOrdinal = preferredTarget;
-			Main.projectile[index].ArmorPenetration = 0;
 			Main.projectile[index].CritChance = 0;
 			Main.projectile[index].netUpdate = true;
 		}
@@ -115,9 +114,15 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 				break;
 		}
 
-		Color color = WeaponProfileRegistry.Get(Identity).Color;
-		Lighting.AddLight(Projectile.Center, color.ToVector3() * 0.3f);
-		if (SecondaryKind != SpearSecondaryKind.MightArc && Main.rand.NextBool(5)) {
+		SpearProfile profile = WeaponProfileRegistry.Get(Identity).Spear;
+		Color color = SecondaryKind switch {
+			SpearSecondaryKind.RetinazerBeam => new Color(238, 65, 65),
+			SpearSecondaryKind.SpazmatismFlare => new Color(80, 235, 105),
+			_ => profile.Color
+		};
+		if (!Main.dedServ)
+			Lighting.AddLight(Projectile.Center, color.ToVector3() * profile.LightStrength);
+		if (!Main.dedServ && SecondaryKind != SpearSecondaryKind.MightArc && Main.rand.NextBool(5)) {
 			Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, -Projectile.velocity * 0.03f, 140, color, 0.7f);
 			dust.noGravity = true;
 		}
@@ -140,7 +145,7 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 				size = 8; lifetime = 45; tileCollide = true;
 				break;
 			case SpearSecondaryKind.MightArc:
-				size = 2; lifetime = 2; tileCollide = false;
+				size = 2; lifetime = 1; tileCollide = false;
 				break;
 			case SpearSecondaryKind.RetinazerBeam:
 				size = 8; lifetime = 30; tileCollide = true;
@@ -173,12 +178,15 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 	private void ShadowThornAI()
 	{
 		if (!TryGetTarget(out NPC target, requireLineOfSight: false)) {
-			if (HasOwnerAuthority)
+			if (ShouldSearchForTarget(6))
 				SetTargetIfChanged(SpearTargeting.FindClosestVisibleTarget(Projectile.Center, 240f));
 			return;
 		}
 
-		SpearTargeting.HomeTowards(Projectile, target.Center, 14f, MathHelper.ToRadians(12f));
+		if (HasOwnerAuthority) {
+			SpearTargeting.HomeTowards(Projectile, target.Center, 14f, MathHelper.ToRadians(12f));
+			SyncHomingVelocity(6);
+		}
 	}
 
 	private void SeekingPetalAI()
@@ -187,12 +195,15 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 			return;
 
 		if (!TryGetTarget(out NPC target, requireLineOfSight: false)) {
-			if (HasOwnerAuthority)
+			if (ShouldSearchForTarget(10))
 				SetTargetIfChanged(FindOrdinalVisibleTarget(Projectile.Center, 500f, _preferredTargetOrdinal));
 			return;
 		}
 
-		SpearTargeting.HomeTowards(Projectile, target.Center, 8f, MathHelper.ToRadians(10f));
+		if (HasOwnerAuthority) {
+			SpearTargeting.HomeTowards(Projectile, target.Center, 8f, MathHelper.ToRadians(10f));
+			SyncHomingVelocity(10);
+		}
 	}
 
 	private void SetTargetIfChanged(int targetIndex)
@@ -208,7 +219,25 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		if (!TryGetTarget(out NPC target, requireLineOfSight: false))
 			return;
 
-		SpearTargeting.HomeTowards(Projectile, target.Center, Math.Max(Projectile.velocity.Length(), 14f), MathHelper.ToRadians(8f));
+		if (HasOwnerAuthority) {
+			SpearTargeting.HomeTowards(Projectile, target.Center, Math.Max(Projectile.velocity.Length(), 14f), MathHelper.ToRadians(8f));
+			SyncHomingVelocity(6);
+		}
+	}
+
+	private bool ShouldSearchForTarget(int interval)
+	{
+		if (!HasOwnerAuthority || Projectile.localAI[0] < _nextTargetSearchUpdate)
+			return false;
+
+		_nextTargetSearchUpdate = (int)Projectile.localAI[0] + interval;
+		return true;
+	}
+
+	private void SyncHomingVelocity(int interval)
+	{
+		if ((int)Projectile.localAI[0] % interval == 0)
+			Projectile.netUpdate = true;
 	}
 
 	private bool TryGetTarget(out NPC target, bool requireLineOfSight)
@@ -226,23 +255,42 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 
 	private static int FindOrdinalVisibleTarget(Vector2 origin, float range, int ordinal)
 	{
-		List<(float distanceSquared, int index)> targets = new();
+		ordinal = Math.Clamp(ordinal, 0, 5);
+		int capacity = ordinal + 1;
+		Span<float> bestDistances = stackalloc float[6];
+		Span<int> bestIndices = stackalloc int[6];
+		for (int i = 0; i < capacity; i++) {
+			bestDistances[i] = float.MaxValue;
+			bestIndices[i] = -1;
+		}
+
+		int visibleTargetCount = 0;
 		float rangeSquared = range * range;
 		for (int i = 0; i < Main.maxNPCs; i++) {
 			NPC npc = Main.npc[i];
-			if (!npc.active || !npc.CanBeChasedBy() || !Collision.CanHitLine(origin, 1, 1, npc.position, npc.width, npc.height))
+			if (!npc.active || !npc.CanBeChasedBy())
 				continue;
 
 			float distanceSquared = Vector2.DistanceSquared(origin, npc.Center);
-			if (distanceSquared <= rangeSquared)
-				targets.Add((distanceSquared, i));
+			if (distanceSquared > rangeSquared || !Collision.CanHitLine(origin, 1, 1, npc.position, npc.width, npc.height))
+				continue;
+
+			visibleTargetCount++;
+			for (int insertAt = 0; insertAt < capacity; insertAt++) {
+				if (distanceSquared > bestDistances[insertAt] || distanceSquared == bestDistances[insertAt] && i > bestIndices[insertAt])
+					continue;
+
+				for (int shift = capacity - 1; shift > insertAt; shift--) {
+					bestDistances[shift] = bestDistances[shift - 1];
+					bestIndices[shift] = bestIndices[shift - 1];
+				}
+				bestDistances[insertAt] = distanceSquared;
+				bestIndices[insertAt] = i;
+				break;
+			}
 		}
 
-		targets.Sort((left, right) => {
-			int distanceComparison = left.distanceSquared.CompareTo(right.distanceSquared);
-			return distanceComparison != 0 ? distanceComparison : left.index.CompareTo(right.index);
-		});
-		return targets.Count == 0 ? -1 : targets[ordinal % targets.Count].index;
+		return visibleTargetCount == 0 ? -1 : bestIndices[ordinal % visibleTargetCount];
 	}
 
 	public override bool? CanHitNPC(NPC target)
@@ -276,7 +324,7 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 
 	public override bool PreDraw(ref Color lightColor)
 	{
-		Color color = WeaponProfileRegistry.Get(Identity).Color;
+		Color color = WeaponProfileRegistry.Get(Identity).Spear.Color;
 		if (SecondaryKind == SpearSecondaryKind.IdentityCopy || SecondaryKind == SpearSecondaryKind.OrbitalBolt)
 			return DrawIdentityTexture(color, SecondaryKind == SpearSecondaryKind.OrbitalBolt ? 0.55f : 0.7f);
 

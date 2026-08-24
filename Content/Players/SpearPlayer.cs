@@ -11,7 +11,8 @@ namespace Spears.Content.Players;
 public sealed class SpearPlayer : ModPlayer
 {
 	private int _monarchCycleIndex;
-	private bool _nextGeminiSpazmatism;
+	private bool _nextStandaloneGeminiSpazmatism;
+	private bool _nextMonarchGeminiSpazmatism;
 	private bool _orbitalsInitialized;
 	private readonly int[] _orbitalCooldowns = new int[3];
 	private readonly SpearKind[] _orbitalIdentities = new SpearKind[3];
@@ -24,10 +25,13 @@ public sealed class SpearPlayer : ModPlayer
 		return result;
 	}
 
-	internal bool NextGeminiMode()
+	internal bool NextGeminiMode(bool monarchCycle)
 	{
-		bool result = _nextGeminiSpazmatism;
-		_nextGeminiSpazmatism = !_nextGeminiSpazmatism;
+		bool result = monarchCycle ? _nextMonarchGeminiSpazmatism : _nextStandaloneGeminiSpazmatism;
+		if (monarchCycle)
+			_nextMonarchGeminiSpazmatism = !_nextMonarchGeminiSpazmatism;
+		else
+			_nextStandaloneGeminiSpazmatism = !_nextStandaloneGeminiSpazmatism;
 		return result;
 	}
 
@@ -55,7 +59,7 @@ public sealed class SpearPlayer : ModPlayer
 	{
 		_orbitalsInitialized = true;
 		for (int i = 0; i < 3; i++) {
-			_orbitalCooldowns[i] = i * 15;
+			_orbitalCooldowns[i] = (i + 1) * 15;
 			_orbitalIdentities[i] = RollInitialDistinctIdentity(i);
 		}
 	}
@@ -100,17 +104,17 @@ public sealed class SpearPlayer : ModPlayer
 			if (_orbitalCooldowns[slot] > 0)
 				continue;
 
-			int targetIndex = SpearTargeting.FindClosestVisibleTarget(Player.Center, 800f);
+			Projectile orbital = FindOrbital(ModContent.ProjectileType<MonarchOrbitalProjectile>(), slot);
+			Vector2 origin = orbital?.Center ?? Player.Center;
+			int targetIndex = SpearTargeting.FindClosestVisibleTarget(origin, 800f);
 			if (targetIndex < 0) {
 				_orbitalCooldowns[slot] = 45;
 				continue;
 			}
 
-			Projectile orbital = FindOrbital(ModContent.ProjectileType<MonarchOrbitalProjectile>(), slot);
-			Vector2 origin = orbital?.Center ?? Player.Center;
 			Vector2 velocity = origin.DirectionTo(Main.npc[targetIndex].Center) * 16f;
 			int damage = Math.Max(1, (int)(Player.GetWeaponDamage(Player.HeldItem) * 0.35f));
-			SpearSecondaryProjectile.Spawn(Player.GetSource_Misc("MonarchOrbitalShot"), origin, velocity, Player.whoAmI, damage, 0f, SpearSecondaryKind.OrbitalBolt, _orbitalIdentities[slot], targetIndex);
+			SpearSecondaryProjectile.Spawn(Player.GetSource_ItemUse(Player.HeldItem, "MonarchOrbitalShot"), origin, velocity, Player.whoAmI, damage, 0f, SpearSecondaryKind.OrbitalBolt, _orbitalIdentities[slot], targetIndex);
 
 			_orbitalCooldowns[slot] = 45;
 			_orbitalIdentities[slot] = RollDistinctIdentity(slot);

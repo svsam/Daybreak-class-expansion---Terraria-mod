@@ -60,7 +60,7 @@ Buffs: {
 
 	TheKingsOfKings: {
 		DisplayName: "The Kings of Kings"
-		Description: "Compelled to flee from the spear's wielder"
+		Description: "Compelled to flee from the nearest player"
 	}
 }
 

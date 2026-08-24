@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class MonarchsSpear : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Monarch;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Monarch;
 
 	public override void AddRecipes()
 	{

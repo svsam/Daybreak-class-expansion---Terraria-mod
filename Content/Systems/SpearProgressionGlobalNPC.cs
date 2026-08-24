@@ -1,4 +1,5 @@
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameContent.ItemDropRules;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -8,6 +9,12 @@ namespace Spears.Content.Systems;
 
 public sealed class SpearProgressionGlobalNPC : GlobalNPC
 {
+	public override void OnSpawn(NPC npc, IEntitySource source)
+	{
+		if (SpearProgressionSystem.IsEaterSegment(npc))
+			SpearProgressionSystem.TrackEaterSpawn(npc, source);
+	}
+
 	public override void OnKill(NPC npc)
 	{
 		if (Main.netMode == NetmodeID.MultiplayerClient)
@@ -18,8 +25,8 @@ public sealed class SpearProgressionGlobalNPC : GlobalNPC
 			return;
 		}
 
-		if (npc.type is NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail)
-			SpearProgressionSystem.ScheduleEaterCompletionCheck();
+		if (SpearProgressionSystem.IsEaterSegment(npc))
+			SpearProgressionSystem.ScheduleEaterCompletionCheck(npc);
 	}
 
 	public override void ModifyNPCLoot(NPC npc, NPCLoot npcLoot)

@@ -13,14 +13,12 @@ public sealed class Stunned : ModBuff
 	{
 		Main.debuff[Type] = true;
 		Main.pvpBuff[Type] = false;
-	}
-
+}
 	public override void Update(NPC npc, ref int buffIndex)
 	{
 		if (SpearGlobalNPC.CanCrowdControl(npc))
 			npc.GetGlobalNPC<SpearGlobalNPC>().Stunned = true;
-		else
+		else if (Main.netMode != NetmodeID.MultiplayerClient)
 			npc.DelBuff(buffIndex--);
 	}
 }
-

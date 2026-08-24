@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class NightsSpine : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Corruption;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Corruption;
 
 	public override void AddRecipes()
 	{

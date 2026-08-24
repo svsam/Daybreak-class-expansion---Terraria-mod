@@ -5,7 +5,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class GoldSpear : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Gold;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Gold;
 
 	public override void AddRecipes()
 	{

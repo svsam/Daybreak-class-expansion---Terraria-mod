@@ -4,4 +4,4 @@ version = 0.1.0
 homepage = https://github.com/svsam/Spears
 side = Both
 includeSource = true
-buildIgnore = spearsart/*, DESIGN_MANIFEST.yaml, ASSET_PROVENANCE.md
+buildIgnore = spearsart/*, DESIGN_MANIFEST.yaml, ASSET_PROVENANCE.md, Properties/*, tools/*, Spears.csproj

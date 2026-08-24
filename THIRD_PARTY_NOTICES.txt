@@ -12,6 +12,10 @@ https://github.com/tModLoader/tModLoader/tree/0ed7203d1cb1bfb3b0060329724d7140af
 
 Copyright 2019 tModLoader Team
 
+The repository files `icon.png` and `icon_small.png` are the default tModLoader
+"MOD" template icons from that template set and remain under the upstream MIT
+license reproduced below.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to

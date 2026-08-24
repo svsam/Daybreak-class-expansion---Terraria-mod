@@ -4,7 +4,7 @@ namespace Spears.Content.Common;
 /// Stable identities used by the shared spear projectile and by concrete spear items.
 /// The final two values are Monarch-only identities and do not have mod item counterparts.
 /// </summary>
-public enum SpearKind : byte
+internal enum SpearKind : byte
 {
 	Gold,
 	Corruption,
@@ -19,4 +19,3 @@ public enum SpearKind : byte
 	VanillaSpear,
 	Daybreak
 }
-

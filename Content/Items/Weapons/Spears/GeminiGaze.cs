@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class GeminiGaze : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Gemini;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Gemini;
 
 	public override void AddRecipes()
 	{

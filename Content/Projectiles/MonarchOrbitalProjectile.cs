@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
 using Spears.Content.Common;
 using Terraria;
+using Terraria.ID;
 using Terraria.ModLoader;
 
 namespace Spears.Content.Projectiles;
@@ -35,13 +36,17 @@ public sealed class MonarchOrbitalProjectile : ModProjectile
 	public override void AI()
 	{
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers) {
-			Projectile.Kill();
+			if (Main.netMode != NetmodeID.MultiplayerClient)
+				Projectile.Kill();
 			return;
 		}
 
 		Player owner = Main.player[Projectile.owner];
 		if (!owner.active || owner.dead || owner.HeldItem?.ModItem is not ProgressionSpearItem spearItem || spearItem.SpearKind != SpearKind.Monarch) {
-			Projectile.Kill();
+			if (Main.netMode != NetmodeID.MultiplayerClient || Projectile.owner == Main.myPlayer)
+				Projectile.Kill();
+			else
+				Projectile.timeLeft = 2;
 			return;
 		}
 
@@ -50,7 +55,8 @@ public sealed class MonarchOrbitalProjectile : ModProjectile
 		Vector2 offset = new(MathF.Cos(angle) * 48f, -42f + MathF.Sin(angle) * 10f);
 		Projectile.Center = owner.MountedCenter + offset;
 		Projectile.rotation = angle + MathHelper.PiOver4;
-		Lighting.AddLight(Projectile.Center, WeaponProfileRegistry.Get(Identity).Color.ToVector3() * 0.35f);
+		if (!Main.dedServ)
+			Lighting.AddLight(Projectile.Center, WeaponProfileRegistry.Get(Identity).Spear.Color.ToVector3() * WeaponProfileRegistry.Get(SpearKind.Monarch).Spear.LightStrength);
 	}
 
 	public override bool PreDraw(ref Color lightColor)

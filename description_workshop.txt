@@ -7,9 +7,9 @@ A complete ten-weapon progression for players who want to use thrown spears from
 [*]Distinct Corruption and Crimson upgrade paths
 [*]Guaranteed three-spear Hellrend drop from the Wall of Flesh
 [*]Unique mechanical, jungle, temple, and endgame secondary effects
-[*]Single-player, host-and-play, and dedicated-server support
+[*]Single-player, host-and-play, and dedicated-server code paths
 [/list]
 
-Tested with Terraria 1.4.4.9 and tModLoader 2026.06.
+Built for Terraria 1.4.4.9 and tModLoader 2026.06. Complete the repository's gameplay acceptance matrix before publishing this build.
 
 Spears is an independent, unofficial Terraria fan mod. It is not endorsed by, sponsored by, or affiliated with Re-Logic or the tModLoader team.

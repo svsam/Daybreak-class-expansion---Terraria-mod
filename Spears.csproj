@@ -5,7 +5,11 @@
 
 	<!-- General -->
 	<PropertyGroup>
-		
+		<!-- Keep portable-PDB document names reproducible and free of machine-specific paths. -->
+		<Deterministic>true</Deterministic>
+		<DebugSymbols>false</DebugSymbols>
+		<DebugType>none</DebugType>
+		<PathMap>$(MSBuildProjectDirectory)=/src/Spears</PathMap>
 	</PropertyGroup>
 
 	<!-- References -->

@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class FlowerSpike : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.FlowerSpike;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.FlowerSpike;
 
 	public override void AddRecipes()
 	{

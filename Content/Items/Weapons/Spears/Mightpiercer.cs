@@ -7,7 +7,7 @@ namespace Spears.Content.Items.Weapons.Spears;
 
 public sealed class Mightpiercer : ProgressionSpearItem
 {
-	public override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Mightpiercer;
+	internal override SpearKind SpearKind => global::Spears.Content.Common.SpearKind.Mightpiercer;
 
 	public override void AddRecipes()
 	{

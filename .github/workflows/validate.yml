@@ -30,4 +30,4 @@ jobs:
         run: python tools/validate_repository.py --history
 
       - name: Check whitespace
-        run: git diff --check
+        run: git diff --check "$(git hash-object -t tree /dev/null)" HEAD

@@ -39,10 +39,8 @@ public sealed class SpearBurstProjectile : ModProjectile
 	internal static int Spawn(IEntitySource source, Vector2 center, int owner, int damage, float knockback, SpearKind kind, int radius, bool appliesFear)
 	{
 		int index = Projectile.NewProjectile(source, center, Vector2.Zero, ModContent.ProjectileType<SpearBurstProjectile>(), damage, knockback, owner, (float)kind, radius, appliesFear ? 1f : 0f);
-		if (index >= 0 && index < Main.maxProjectiles) {
-			Main.projectile[index].ArmorPenetration = 0;
+		if (index >= 0 && index < Main.maxProjectiles)
 			Main.projectile[index].CritChance = 0;
-		}
 		return index;
 	}
 
@@ -57,11 +55,12 @@ public sealed class SpearBurstProjectile : ModProjectile
 		}
 
 		WeaponProfile profile = WeaponProfileRegistry.Get(Kind);
-		Lighting.AddLight(Projectile.Center, profile.Color.ToVector3() * 0.5f);
-		if (Projectile.timeLeft == 3) {
+		if (!Main.dedServ)
+			Lighting.AddLight(Projectile.Center, profile.Spear.Color.ToVector3() * profile.Spear.LightStrength);
+		if (!Main.dedServ && Projectile.timeLeft == 3) {
 			for (int i = 0; i < 16; i++) {
 				Vector2 velocity = (MathHelper.TwoPi * i / 16f).ToRotationVector2() * Main.rand.NextFloat(1.5f, 4f);
-				Dust dust = Dust.NewDustPerfect(Projectile.Center + velocity.SafeNormalize(Vector2.UnitX) * Radius * 0.4f, DustID.TintableDustLighted, velocity, 100, profile.Color, 1f);
+				Dust dust = Dust.NewDustPerfect(Projectile.Center + velocity.SafeNormalize(Vector2.UnitX) * Radius * 0.4f, DustID.TintableDustLighted, velocity, 100, profile.Spear.Color, 1f);
 				dust.noGravity = true;
 			}
 		}
@@ -82,7 +81,7 @@ public sealed class SpearBurstProjectile : ModProjectile
 
 	public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
 	{
-		WeaponProfileRegistry.Get(Kind).TryApplyImpactDebuff(target);
+		WeaponProfileRegistry.Get(Kind).Spear.TryApplyImpactDebuff(target);
 		if (AppliesFear && SpearGlobalNPC.CanCrowdControl(target))
 			target.AddBuff(ModContent.BuffType<TheKingsOfKings>(), 300);
 	}
@@ -90,7 +89,7 @@ public sealed class SpearBurstProjectile : ModProjectile
 	public override bool PreDraw(ref Color lightColor)
 	{
 		Texture2D pixel = TextureAssets.MagicPixel.Value;
-		Color color = WeaponProfileRegistry.Get(Kind).Color * (Projectile.timeLeft / 3f) * 0.75f;
+		Color color = WeaponProfileRegistry.Get(Kind).Spear.Color * (Projectile.timeLeft / 3f) * 0.75f;
 		const int segmentCount = 24;
 		for (int i = 0; i < segmentCount; i++) {
 			float angle = MathHelper.TwoPi * i / segmentCount;

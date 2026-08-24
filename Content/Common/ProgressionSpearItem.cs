@@ -14,7 +14,7 @@ namespace Spears.Content.Common;
 /// </summary>
 public abstract class ProgressionSpearItem : ModItem
 {
-	public abstract SpearKind SpearKind { get; }
+	internal abstract SpearKind SpearKind { get; }
 
 	public sealed override void SetStaticDefaults()
 	{
@@ -69,7 +69,7 @@ public abstract class ProgressionSpearItem : ModItem
 		}
 
 		if (identity == SpearKind.Gemini)
-			geminiMode = spearPlayer.NextGeminiMode();
+			geminiMode = spearPlayer.NextGeminiMode(SpearKind == SpearKind.Monarch);
 
 		ProgressionSpearProjectile.Spawn(source, position, velocity, damage, knockback, player.whoAmI, SpearKind, flags, identity, geminiMode);
 		return false;

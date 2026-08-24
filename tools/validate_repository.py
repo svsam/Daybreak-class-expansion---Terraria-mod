@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import struct
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 
 import yaml
@@ -26,6 +28,89 @@ EXPECTED_ITEMS = (
     "Tepoztopilli",
     "MonarchsSpear",
 )
+
+
+class TmodFormatError(ValueError):
+    """Raised when a .tmod file cannot be parsed safely."""
+
+
+class TmodReader:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.offset = 0
+
+    def read(self, length: int) -> bytes:
+        if length < 0 or self.offset + length > len(self.data):
+            raise TmodFormatError("unexpected end of file")
+        result = self.data[self.offset : self.offset + length]
+        self.offset += length
+        return result
+
+    def read_int32(self) -> int:
+        return struct.unpack("<i", self.read(4))[0]
+
+    def read_uint32(self) -> int:
+        return struct.unpack("<I", self.read(4))[0]
+
+    def read_7bit_int(self) -> int:
+        value = 0
+        for shift in range(0, 35, 7):
+            current = self.read(1)[0]
+            value |= (current & 0x7F) << shift
+            if current & 0x80 == 0:
+                return value
+        raise TmodFormatError("invalid 7-bit encoded integer")
+
+    def read_string(self) -> str:
+        length = self.read_7bit_int()
+        try:
+            return self.read(length).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise TmodFormatError(f"invalid UTF-8 string: {exc}") from exc
+
+
+def read_tmod(path: Path) -> tuple[str, str, dict[str, bytes]]:
+    reader = TmodReader(path.read_bytes())
+    if reader.read(4) != b"TMOD":
+        raise TmodFormatError("missing TMOD signature")
+
+    reader.read_string()  # tModLoader build version
+    reader.read(20)  # SHA-1 payload hash
+    reader.read(256)  # signature slot
+    reader.read_uint32()  # payload length
+    mod_name = reader.read_string()
+    mod_version = reader.read_string()
+    entry_count = reader.read_int32()
+    if entry_count < 0 or entry_count > 10_000:
+        raise TmodFormatError(f"implausible entry count: {entry_count}")
+
+    entry_table: list[tuple[str, int, int]] = []
+    for _ in range(entry_count):
+        name = reader.read_string().replace("\\", "/")
+        raw_length = reader.read_int32()
+        stored_length = reader.read_int32()
+        if raw_length < 0 or stored_length < 0:
+            raise TmodFormatError(f"negative length for {name!r}")
+        entry_table.append((name, raw_length, stored_length))
+
+    entries: dict[str, bytes] = {}
+    for name, raw_length, stored_length in entry_table:
+        if name in entries:
+            raise TmodFormatError(f"duplicate entry: {name}")
+        stored = reader.read(stored_length)
+        try:
+            payload = stored if stored_length == raw_length else zlib.decompress(stored, -zlib.MAX_WBITS)
+        except zlib.error as exc:
+            raise TmodFormatError(f"invalid DEFLATE payload for {name}: {exc}") from exc
+        if len(payload) != raw_length:
+            raise TmodFormatError(
+                f"length mismatch for {name}: expected {raw_length}, got {len(payload)}"
+            )
+        entries[name] = payload
+
+    if reader.offset != len(reader.data):
+        raise TmodFormatError(f"{len(reader.data) - reader.offset} trailing byte(s)")
+    return mod_name, mod_version, entries
 
 
 def fail(message: str, failures: list[str]) -> None:
@@ -160,6 +245,58 @@ def validate_tracked_text(failures: list[str]) -> None:
         )
 
 
+def validate_tmod(path: Path, failures: list[str]) -> None:
+    if not path.is_file():
+        fail(f"missing .tmod package: {path}", failures)
+        return
+
+    try:
+        mod_name, _, entries = read_tmod(path)
+    except (OSError, TmodFormatError) as exc:
+        fail(f"cannot inspect {path}: {exc}", failures)
+        return
+
+    if mod_name != "Spears":
+        fail(f"package mod name is {mod_name!r}, expected 'Spears'", failures)
+
+    forbidden_exact = {
+        "DESIGN_MANIFEST.yaml",
+        "ASSET_PROVENANCE.md",
+        "Spears.csproj",
+    }
+    forbidden_prefixes = (
+        "spearsart/",
+        "tools/",
+        "Properties/",
+        "bin/",
+        "obj/",
+        "artifacts/",
+        "TestResults/",
+    )
+    forbidden_suffixes = (".pdb", ".tmod", ".binlog", ".trx")
+
+    for name, payload in entries.items():
+        normalized = name.replace("\\", "/")
+        if (
+            normalized in forbidden_exact
+            or normalized.startswith(forbidden_prefixes)
+            or normalized.lower().endswith(forbidden_suffixes)
+        ):
+            fail(f"package contains forbidden entry: {normalized}", failures)
+
+        text = payload.decode("latin-1", errors="replace")
+        scan_sensitive_text(text, f"package entry {normalized}", failures)
+
+    # tModLoader 2026.06 serializes modSource/eacPath and copies the .tmod
+    # unchanged when publishing, even when DebugType=None prevents the PDB
+    # itself from being packaged. The package-wide sensitive-data scan above
+    # therefore enforces a neutral staging root without rejecting those keys.
+
+    for required in ("Spears.dll", "Info", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt"):
+        if required not in entries:
+            fail(f"package is missing required entry: {required}", failures)
+
+
 def validate_release_files(failures: list[str]) -> None:
     required = (
         "LICENSE.txt",
@@ -182,6 +319,9 @@ def validate_release_files(failures: list[str]) -> None:
         "spearsart/*",
         "DESIGN_MANIFEST.yaml",
         "ASSET_PROVENANCE.md",
+        "Properties/*",
+        "tools/*",
+        "Spears.csproj",
     ):
         if required_text not in build_text:
             fail(f"build.txt is missing {required_text!r}", failures)
@@ -193,6 +333,38 @@ def validate_history(failures: list[str]) -> None:
     )
     scan_sensitive_text(history, "reachable Git history", failures)
 
+    historical_paths = git_output("log", "--all", "--format=", "--name-only")
+    if re.search(r"(?:^|/)(?:bin|obj)/", historical_paths, flags=re.MULTILINE):
+        fail("reachable Git history contains bin/ or obj/ content", failures)
+
+    git_directory = Path(git_output("rev-parse", "--git-dir").strip())
+    if not git_directory.is_absolute():
+        git_directory = ROOT / git_directory
+    logs_directory = git_directory / "logs"
+    if logs_directory.is_dir():
+        for log_path in logs_directory.rglob("*"):
+            if log_path.is_file():
+                scan_sensitive_text(
+                    log_path.read_text(encoding="utf-8", errors="replace"),
+                    f"Git reflog {log_path.relative_to(git_directory)}",
+                    failures,
+                )
+
+    fsck = subprocess.run(
+        ["git", "fsck", "--full", "--no-reflogs", "--unreachable"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    unreachable = "\n".join(part for part in (fsck.stdout, fsck.stderr) if part).strip()
+    if fsck.returncode != 0:
+        fail(f"git fsck failed: {unreachable}", failures)
+    elif unreachable:
+        fail("Git object database still contains unreachable objects", failures)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -201,6 +373,11 @@ def main() -> int:
         action="store_true",
         help="also scan all reachable Git history (expected to fail before the planned rewrite)",
     )
+    parser.add_argument(
+        "--tmod",
+        type=Path,
+        help="also parse and inspect the specified built .tmod package",
+    )
     args = parser.parse_args()
 
     failures: list[str] = []
@@ -208,6 +385,9 @@ def main() -> int:
     validate_icons(failures)
     validate_tracked_text(failures)
     validate_release_files(failures)
+    if args.tmod:
+        package_path = args.tmod if args.tmod.is_absolute() else ROOT / args.tmod
+        validate_tmod(package_path.resolve(), failures)
     if args.history:
         validate_history(failures)
 

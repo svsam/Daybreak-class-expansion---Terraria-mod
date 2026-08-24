@@ -1,3 +1,3 @@
-Ten Daybreak-style thrown spears spanning pre-boss progression through post-Moon Lord. Embed spears in enemies, build damage over time, and trigger themed detonations with Corruption, Crimson, mechanical, jungle, temple, and endgame effects. Supports single-player and multiplayer. Tested with tModLoader 2026.06 for Terraria 1.4.4.9.
+Ten Daybreak-style thrown spears spanning pre-boss progression through post-Moon Lord. Embed spears in enemies, build damage over time, and trigger themed detonations with Corruption, Crimson, mechanical, jungle, temple, and endgame effects. Designed for single-player and multiplayer on tModLoader 2026.06 for Terraria 1.4.4.9.
 
 Unofficial Terraria fan mod. Not endorsed by or affiliated with Re-Logic or the tModLoader team.

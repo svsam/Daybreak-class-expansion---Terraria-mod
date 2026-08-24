@@ -35,6 +35,7 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	private bool IsEmbedded => Projectile.ai[1] > 0f;
 	private int EmbeddedTargetIndex => (int)Projectile.ai[1] - 1;
 	private bool HasOwnerAuthority => Main.netMode == NetmodeID.SinglePlayer || Projectile.owner == Main.myPlayer;
+	private bool CanCreateProgressionEffects => (_sourceFlags & SpearSourceFlags.Main) != 0 && (_sourceFlags & (SpearSourceFlags.Auxiliary | SpearSourceFlags.Orbital | SpearSourceFlags.Copy)) == 0;
 	internal SpearKind EffectiveKind => (_sourceFlags & SpearSourceFlags.Monarch) != 0 ? _identity : (SpearKind)(int)Projectile.ai[0];
 
 	public override string Texture => "Terraria/Images/Projectile_0";
@@ -149,8 +150,11 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 					Projectile.netUpdate = true;
 				}
 			}
-			if (IsValidHomingTarget(_homingTargetIndex))
+			if (HasOwnerAuthority && IsValidHomingTarget(_homingTargetIndex)) {
 				SpearTargeting.HomeTowards(Projectile, Main.npc[_homingTargetIndex].Center, Math.Max(Projectile.velocity.Length(), 1f), MathHelper.ToRadians(4f));
+				if ((int)Projectile.ai[2] % 10 == 0)
+					Projectile.netUpdate = true;
+			}
 		}
 		else if (Projectile.ai[2] > FlightGravityDelayUpdates) {
 			Projectile.velocity.X *= 0.995f;
@@ -158,14 +162,21 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		}
 
 		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Lighting.AddLight(Projectile.Center, profile.Color.ToVector3() * 0.35f);
-		if (Main.rand.NextBool(4)) {
-			Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, -Projectile.velocity * 0.04f, 120, profile.Color, 0.8f);
+		Color visualColor = GetVisualColor(profile);
+		if (!Main.dedServ)
+			Lighting.AddLight(Projectile.Center, visualColor.ToVector3() * GetLightStrength(profile));
+		if (!Main.dedServ && Main.rand.NextBool(4)) {
+			Color dustColor = GetDustColor(visualColor);
+			Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, -Projectile.velocity * 0.04f, 120, dustColor, 0.8f);
 			dust.noGravity = true;
 		}
 
-		if (Projectile.ai[2] >= MaximumFlightUpdates && HasOwnerAuthority)
-			Detonate();
+		if (Projectile.ai[2] >= MaximumFlightUpdates && HasOwnerAuthority) {
+			if (CanCreateProgressionEffects)
+				Detonate();
+			else
+				Projectile.Kill();
+		}
 	}
 
 	private static bool IsValidHomingTarget(int index)
@@ -195,11 +206,14 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		Projectile.rotation = _impactDirection.ToRotation() + MathHelper.PiOver4;
 
 		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Lighting.AddLight(Projectile.Center, profile.Color.ToVector3() * 0.25f);
-		if (Main.rand.NextBool(12)) {
-			Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, Vector2.Zero, 140, profile.Color, 0.65f);
-			dust.noGravity = true;
-		}
+		Color visualColor = GetVisualColor(profile);
+		float lightStrength = GetLightStrength(profile);
+		if (EffectiveKind == SpearKind.Hellrend)
+			lightStrength = MathHelper.Lerp(lightStrength, 1f, Projectile.ai[2] / EmbeddedLifetimeUpdates);
+		if (!Main.dedServ)
+			Lighting.AddLight(Projectile.Center, visualColor.ToVector3() * lightStrength);
+		if (!Main.dedServ)
+			EmitEmbeddedDust(visualColor);
 
 		if (Projectile.ai[2] >= EmbeddedLifetimeUpdates && HasOwnerAuthority)
 			Detonate();
@@ -212,7 +226,7 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	public override void ModifyHitNPC(NPC target, ref NPC.HitModifiers modifiers)
 	{
 		WeaponProfile attackProfile = WeaponProfileRegistry.Get((SpearKind)(int)Projectile.ai[0]);
-		if (!attackProfile.DirectHitCanCrit)
+		if (!attackProfile.Spear.DirectHitCanCrit)
 			modifiers.DisableCrit();
 	}
 
@@ -220,8 +234,13 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	{
 		if (!IsFlying || _detonated)
 			return;
+		if (!CanCreateProgressionEffects) {
+			if (HasOwnerAuthority)
+				Projectile.Kill();
+			return;
+		}
 
-		WeaponProfileRegistry.Get(EffectiveKind).TryApplyImpactDebuff(target);
+		WeaponProfileRegistry.Get(EffectiveKind).Spear.TryApplyImpactDebuff(target);
 		_embedOffset = Projectile.Center - target.Center;
 		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
 		Projectile.ai[1] = target.whoAmI + 1;
@@ -262,8 +281,12 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 	public override bool OnTileCollide(Vector2 oldVelocity)
 	{
-		if (HasOwnerAuthority)
-			Detonate();
+		if (HasOwnerAuthority) {
+			if (CanCreateProgressionEffects)
+				Detonate();
+			else
+				Projectile.Kill();
+		}
 		return false;
 	}
 
@@ -276,7 +299,7 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 	internal bool IsEmbeddedIn(int npcIndex) => IsEmbedded && EmbeddedTargetIndex == npcIndex && !_detonated;
 
-	internal int EmbeddedDotDps => IsEmbedded && !_detonated ? WeaponProfileRegistry.Get(EffectiveKind).DotDps : 0;
+	internal int EmbeddedDotDps => CanCreateProgressionEffects && IsEmbedded && !_detonated ? WeaponProfileRegistry.Get(EffectiveKind).Spear.DotDps : 0;
 
 	private void Detonate()
 	{
@@ -293,6 +316,9 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 	private void CreateDetonationEffects()
 	{
+		if (!CanCreateProgressionEffects)
+			return;
+
 		WeaponProfile selected = WeaponProfileRegistry.Get(EffectiveKind);
 		SpawnBurst(selected, false);
 		SpawnSelectedSecondary(selected);
@@ -305,8 +331,8 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 	private void SpawnBurst(WeaponProfile profile, bool appliesFear)
 	{
-		int damage = Math.Max(1, (int)(_launchDamage * profile.BurstDamageMultiplier));
-		SpearBurstProjectile.Spawn(Projectile.GetSource_FromThis(), Projectile.Center, Projectile.owner, damage, profile.BurstKnockback, profile.Kind, profile.BurstRadius, appliesFear);
+		int damage = Math.Max(1, (int)(_launchDamage * profile.Spear.BurstDamageMultiplier));
+		SpearBurstProjectile.Spawn(Projectile.GetSource_FromThis(), Projectile.Center, Projectile.owner, damage, profile.Spear.BurstKnockback, profile.Kind, profile.Spear.BurstRadius, appliesFear);
 	}
 
 	private void SpawnSelectedSecondary(WeaponProfile profile)
@@ -314,7 +340,7 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		Vector2 direction = _impactDirection.SafeNormalize(Vector2.UnitX);
 		IEntitySource source = Projectile.GetSource_FromThis();
 
-		switch (profile.SecondaryEffect) {
+		switch (profile.Spear.SecondaryEffect) {
 			case SpearSecondaryEffect.ShadowThorn:
 				SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction * 14f, Projectile.owner, ScaleDamage(0.35f), 0f, SpearSecondaryKind.ShadowThorn, profile.Kind);
 				break;
@@ -345,9 +371,12 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 				break;
 
 			case SpearSecondaryEffect.SeekingPetals:
+				Span<int> petalTargets = stackalloc int[6];
+				int petalTargetCount = SpearTargeting.FindClosestVisibleTargets(Projectile.Center, 500f, petalTargets);
 				for (int i = 0; i < 6; i++) {
 					float angle = MathHelper.Lerp(MathHelper.ToRadians(-50f), MathHelper.ToRadians(50f), i / 5f);
-					SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction.RotatedBy(angle) * 8f, Projectile.owner, ScaleDamage(0.25f), 0f, SpearSecondaryKind.SeekingPetal, profile.Kind, preferredTarget: i);
+					int targetIndex = petalTargetCount > 0 ? petalTargets[i % petalTargetCount] : -1;
+					SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction.RotatedBy(angle) * 8f, Projectile.owner, ScaleDamage(0.25f), 0f, SpearSecondaryKind.SeekingPetal, profile.Kind, targetIndex, i);
 				}
 				break;
 
@@ -373,7 +402,8 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	public override bool PreDraw(ref Color lightColor)
 	{
 		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Texture2D texture = ModContent.Request<Texture2D>(profile.TexturePath, AssetRequestMode.ImmediateLoad).Value;
+		Color visualColor = GetVisualColor(profile);
+		Texture2D texture = ModContent.Request<Texture2D>(profile.Spear.TexturePath, AssetRequestMode.ImmediateLoad).Value;
 		Vector2 origin = texture.Size() * 0.5f;
 		SpriteEffects effects = SpriteEffects.None;
 		float opacity = Projectile.Opacity;
@@ -384,11 +414,105 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 					continue;
 				float fade = (Projectile.oldPos.Length - i) / (float)(Projectile.oldPos.Length + 1) * 0.35f;
 				Vector2 drawPosition = Projectile.oldPos[i] + Projectile.Size * 0.5f - Main.screenPosition;
-				Main.EntitySpriteDraw(texture, drawPosition, null, profile.Color * (fade * opacity), Projectile.rotation, origin, 1f, effects);
+				Main.EntitySpriteDraw(texture, drawPosition, null, visualColor * (fade * opacity), Projectile.rotation, origin, 1f, effects);
 			}
 		}
 
 		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor * opacity, Projectile.rotation, origin, 1f, effects);
+		if (IsEmbedded)
+			DrawEmbeddedSpecial(TextureAssets.MagicPixel.Value, visualColor * opacity);
 		return false;
+	}
+
+	private Color GetVisualColor(WeaponProfile profile)
+	{
+		if (EffectiveKind == SpearKind.Gemini)
+			return _geminiSpazmatismMode ? new Color(80, 235, 105) : new Color(238, 65, 65);
+		return profile.Spear.Color;
+	}
+
+	private float GetLightStrength(WeaponProfile profile) =>
+		(_sourceFlags & SpearSourceFlags.Monarch) != 0 ? WeaponProfileRegistry.Get(SpearKind.Monarch).Spear.LightStrength : profile.Spear.LightStrength;
+
+	private Color GetDustColor(Color fallback)
+	{
+		if ((_sourceFlags & SpearSourceFlags.Monarch) == 0 || !Main.rand.NextBool(5))
+			return fallback;
+
+		return Main.hslToRgb((float)(Main.GameUpdateCount % 360) / 360f, 0.85f, 0.6f);
+	}
+
+	private void EmitEmbeddedDust(Color visualColor)
+	{
+		int chance = EffectiveKind == SpearKind.Corruption && Projectile.ai[2] >= EmbeddedLifetimeUpdates - 120 ? 3 : 12;
+		if (!Main.rand.NextBool(chance))
+			return;
+
+		Vector2 velocity = Vector2.Zero;
+		float scale = 0.65f;
+		switch (EffectiveKind) {
+			case SpearKind.Crimson:
+				velocity = Vector2.UnitY.RotatedByRandom(0.45f) * Main.rand.NextFloat(0.4f, 1.2f);
+				scale = 0.6f + 0.2f * MathF.Sin(Projectile.ai[2] * 0.12f);
+				break;
+			case SpearKind.Mightpiercer:
+				velocity = _impactDirection.RotatedBy(MathHelper.PiOver2) * Main.rand.NextFloat(-1.5f, 1.5f);
+				scale = 0.8f;
+				break;
+			case SpearKind.FlowerSpike:
+				velocity = -Vector2.UnitY.RotatedByRandom(0.8f) * Main.rand.NextFloat(0.4f, 1.1f);
+				break;
+			case SpearKind.Tepoztopilli:
+				velocity = Main.rand.NextVector2Circular(1.1f, 1.1f);
+				scale = 0.85f;
+				break;
+		}
+
+		Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, velocity, 140, GetDustColor(visualColor), scale);
+		dust.noGravity = true;
+	}
+
+	private void DrawEmbeddedSpecial(Texture2D pixel, Color color)
+	{
+		Vector2 center = Projectile.Center - Main.screenPosition;
+		float progress = MathHelper.Clamp(Projectile.ai[2] / EmbeddedLifetimeUpdates, 0f, 1f);
+		float pulse = 0.75f + 0.25f * MathF.Sin((float)Main.GameUpdateCount * 0.12f);
+
+		switch (EffectiveKind) {
+			case SpearKind.Mightpiercer:
+				float travel = ((float)Main.GameUpdateCount * 0.08f % 1f - 0.5f) * 28f;
+				Vector2 spark = center + _impactDirection * travel;
+				Main.EntitySpriteDraw(pixel, spark, null, color * pulse, _impactDirection.ToRotation(), new Vector2(0.5f), new Vector2(5f, 2f), SpriteEffects.None);
+				break;
+
+			case SpearKind.Gemini:
+				Main.EntitySpriteDraw(pixel, center, null, color * pulse, 0f, new Vector2(0.5f), new Vector2(7f), SpriteEffects.None);
+				break;
+
+			case SpearKind.Frightsteel:
+				for (int i = 0; i < 4; i++) {
+					float angle = (float)Main.GameUpdateCount * 0.06f + MathHelper.TwoPi * i / 4f;
+					Vector2 blade = center + angle.ToRotationVector2() * 11f;
+					Main.EntitySpriteDraw(pixel, blade, null, color * 0.75f, angle + MathHelper.PiOver2, new Vector2(0.5f), new Vector2(7f, 2f), SpriteEffects.None);
+				}
+				break;
+
+			case SpearKind.FlowerSpike:
+				for (int i = 0; i < 6; i++) {
+					float angle = MathHelper.TwoPi * i / 6f;
+					Vector2 petal = center + angle.ToRotationVector2() * MathHelper.Lerp(2f, 9f, progress);
+					Main.EntitySpriteDraw(pixel, petal, null, (i % 2 == 0 ? color : new Color(90, 220, 80)) * 0.75f, angle, new Vector2(0.5f), new Vector2(6f, 3f), SpriteEffects.None);
+				}
+				break;
+
+			case SpearKind.Tepoztopilli:
+				Main.EntitySpriteDraw(pixel, center, null, new Color(255, 172, 35) * pulse, 0f, new Vector2(0.5f), new Vector2(6f), SpriteEffects.None);
+				for (int i = 0; i < 4; i++) {
+					float angle = MathHelper.TwoPi * i / 4f;
+					Vector2 plate = center + angle.ToRotationVector2() * MathHelper.Lerp(3f, 10f, progress);
+					Main.EntitySpriteDraw(pixel, plate, null, new Color(173, 114, 57) * 0.85f, angle, new Vector2(0.5f), new Vector2(7f, 3f), SpriteEffects.None);
+				}
+				break;
+		}
 	}
 }
