@@ -1,14 +1,80 @@
-# This file will automatically update with entries for new content after a build and reload.
-# Please read https://github.com/tModLoader/tModLoader/wiki/Localization to learn more about localization and these files.
+# English localization for Spears.
 
 Items: {
-	Spear1: {
-		DisplayName: "Spear1"
-		Tooltip:
-			'''
-			Template of an item
-			Replacing this tooltip is duty 
-			It's snowing on Mt.Fuji
-			'''
+	GoldSpear: {
+		DisplayName: "Gold Spear"
+		Tooltip: "Trusty spear smeared with gold\nLodges in enemies and may inflict Midas"
 	}
+
+	NightsSpine: {
+		DisplayName: "Night's Spine"
+		Tooltip: "The Corruption remembers every wound\nDetonations release a seeking shadow thorn that can stun ordinary enemies"
+	}
+
+	BloodSpine: {
+		DisplayName: "Bloodspine"
+		Tooltip: "It drinks before it blooms\nDetonations scatter a fan of blood needles"
+	}
+
+	Hellrend: {
+		DisplayName: "Hellrend"
+		Tooltip: "Three flames tear open the horizon\nThrows a central spear with two wide-arcing companions"
+	}
+
+	Mightpiercer: {
+		DisplayName: "Mightpiercer"
+		Tooltip: "Built from the Destroyer's broken spine\nDetonations arc electricity to nearby enemies"
+	}
+
+	GeminiGaze: {
+		DisplayName: "Gemini Gaze"
+		Tooltip: "Two eyes. One point\nAlternates between Retinazer beams and Spazmatism flames"
+	}
+
+	Frightsteel: {
+		DisplayName: "Frightsteel"
+		Tooltip: "The final machine learned fear\nDetonations launch four rotating Prime blades"
+	}
+
+	FlowerSpike: {
+		DisplayName: "FlowerSpike"
+		Tooltip: "Every wound takes root\nPoisons embedded enemies and blooms into seeking petals"
+	}
+
+	Tepoztopilli: {
+		DisplayName: "Tepoztopilli"
+		Tooltip: "The temple sun burns within\nPierces armor and bursts into solar temple shards"
+	}
+
+	MonarchsSpear: {
+		DisplayName: "Monarch's Spear"
+		Tooltip: "Every spear in its lineage answers the call\nCycles inherited spear effects and commands three orbiting weapons"
+	}
+}
+
+Buffs: {
+	Stunned: {
+		DisplayName: "Stunned"
+		Description: "Unable to move or act"
+	}
+
+	TheKingsOfKings: {
+		DisplayName: "The Kings of Kings"
+		Description: "Compelled to flee from the spear's wielder"
+	}
+}
+
+Conditions: {
+	DownedEaterOfWorlds: "Requires defeating the Eater of Worlds"
+	DownedBrainOfCthulhu: "Requires defeating the Brain of Cthulhu"
+	DownedDestroyer: "Requires defeating the Destroyer"
+	DownedTwins: "Requires defeating the Twins"
+	DownedSkeletronPrime: "Requires defeating Skeletron Prime"
+	DownedPlantera: "Requires defeating Plantera"
+	DownedGolem: "Requires defeating Golem"
+	DownedMoonLord: "Requires defeating the Moon Lord"
+}
+
+RecipeGroups: {
+	EvilSpear: "Any evil-biome spear"
 }

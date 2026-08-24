@@ -1,792 +1,820 @@
-manifest_version: 2
-status: draft_suggestions
+manifest_version: 3
+status: approved_for_implementation
+runtime_usage: design_time_only
 illustrated_weapon_count: 10
 unillustrated_entries: void
+license: MIT
+copyright: "2026 SvSam"
 
-# Gold Spear preserves the supplied concept. Names, stats, recipes, and effects
-# for the remaining entries are suggestions to revise before implementation.
+target:
+  terraria: 1.4.4.9
+  tmodloader: 2026.06
+  dotnet: 8
+  csharp: 12
+  multiplayer: [single_player, host_and_play, dedicated_server]
+
+global:
+  progression_family_cap_per_owner_per_npc: 8
+  embedded_duration_seconds: 5
+  fixed_dot_ignores_defense: true
+  fixed_dot_life_regen_rule: "Subtract twice the summed fixed DPS from NPC life regeneration."
+  crit_policy: "Direct main-spear hits may crit except Gold Spear; fixed DoT, bursts, orbitals, copies, and auxiliary projectiles cannot crit."
+  pvp: unsupported
+  item_size_pixels: [40, 40]
+  damage_class: MeleeNoSpeed
+  item_use_style: Swing
+  no_melee: true
+  no_use_graphic: true
+  auto_reuse: true
+  use_sound: SoundID.Item1
+  research_unlock_count: 1
+  item_set: ItemID.Sets.Spears
+  use_animation_policy: "useAnimation always equals useTime; one throw or volley per use."
+  melee_speed_policy: "Melee-speed bonuses affect projectile velocity, not firing cadence."
+
+main_projectile:
+  implementation: "One shared dynamic ModProjectile drawing the selected weapon's item icon."
+  hitbox_pixels: [16, 16]
+  tile_collision_hitbox_pixels: [10, 10]
+  extra_updates: 1
+  updates_per_tick: 2
+  ignores_water: true
+  max_flight_updates: 3600
+  max_flight_seconds: 30
+  gravity_delay_updates: 45
+  gravity_delay_seconds: 0.375
+  horizontal_drag_per_update: 0.995
+  gravity_per_update: 0.15
+  custom_fall_speed_cap: none
+  fade_in: true
+  rotation: velocity_aligned
+  trail: "Short color-matched projectile afterimages."
+  ai_contract:
+    ai_0: SpearKind
+    ai_1: "state plus embedded target identifier"
+    ai_2: state_timer
+    extra_ai:
+      - embedded_target_offset
+      - original_flight_direction
+      - gemini_mode
+      - monarch_identity
+      - source_flags
+  states:
+    flying:
+      contact_damage: true
+      tile_collision: true
+    embedded:
+      contact_damage: false
+      tile_collision: false
+      duration_updates: 600
+      behavior: "Follow the target at a stored target-relative offset."
+    detonating:
+      behavior: "Transition exactly once, spawn the configured burst and children, then die."
+  embed_cap:
+    scope: "Same NPC, same projectile owner, all ten progression weapons."
+    eviction: "When a ninth spear attaches, detonate the oldest."
+    multiplayer: "Each player owns an independent cap; fixed DoT from different players stacks."
+  detonation_triggers:
+    - tile_collision
+    - flight_timeout
+    - embedded_expiry
+    - embedded_target_death_or_despawn
+    - oldest_cap_eviction
+  burst_rules:
+    invisible_circular_hitbox: true
+    hits_each_npc_once: true
+    passes_through_walls: true
+    can_crit: false
+  source_flags:
+    main: "May embed, detonate, apply debuffs, and create configured children."
+    hellrend_side: "May embed and detonate; may not recursively create another volley."
+    monarch_orbital: "One hit; no crit, debuff, embed, burst, or children."
+    monarch_copy: "One hit; no crit, debuff, embed, burst, or children."
+    auxiliary: "No crit, embed, burst, or recursive children unless explicitly stated."
+
+networking:
+  item_volleys_and_children: "Spawn once from the owning client and synchronize."
+  authoritative_state:
+    - npc_life_and_life_regen
+    - npc_crowd_control
+    - world_progression_flags
+    - boss_loot
+  deterministic_selection:
+    target_order: "Shortest distance, then lowest NPC index."
+    requires_line_of_sight_on_acquisition: true
+    monarch_identity_and_mode: "Chosen once by the owner/server-authoritative state and synchronized."
+  late_join: "Reconstruct embedded registrations during projectile AI."
+  state_transitions: "Set netUpdate whenever flight, embed, mode, identity, or detonation state changes."
+
+world_progression:
+  custom_saved_and_synced_flags:
+    downed_eater_of_worlds:
+      condition_key: Mods.Spears.Conditions.DownedEaterOfWorlds
+      completion: "After an Eater segment dies, scan on the next tick and set only if no Eater head, body, or tail remains."
+    downed_brain_of_cthulhu:
+      condition_key: Mods.Spears.Conditions.DownedBrainOfCthulhu
+      completion: "Set when the Brain of Cthulhu dies."
+  vanilla_dedicated_flags:
+    - DownedDestroyer
+    - DownedTwins
+    - DownedSkeletronPrime
+    - DownedPlantera
+    - DownedGolem
+    - DownedMoonLord
+
+crowd_control:
+  eligibility:
+    excluded:
+      - boss_or_boss_counted
+      - friendly_or_town_npc
+      - segmented_npc
+      - zero_knockback_resistance
+      - unchaseable_target
+  stunned:
+    duration_seconds: 3
+    behavior: "Suppress eligible NPC AI and set velocity to zero."
+    resisted_behavior: "Ineligible targets take projectile damage but are not stunned."
+    runtime_icon: Webbed
+  the_kings_of_kings:
+    duration_seconds: 5
+    behavior:
+      ground: "After ordinary AI, accelerate away from the nearest player up to 4 pixels/tick and jump when blocked."
+      flying: "After ordinary AI, steer away from the nearest player up to 6 pixels/tick."
+    resisted_behavior: "Ineligible targets take burst damage but do not flee."
+    runtime_icon: Confused
+
+secondary_projectiles:
+  ShadowThorn:
+    size_pixels: [12, 12]
+    speed: 14
+    lifetime_ticks: 60
+    tile_collision: false
+    target_range_pixels: 240
+    turn_rate_degrees_per_tick: 12
+    penetration: 1
+    on_hit: "Apply Stunned for 3 seconds to eligible enemies."
+    visual: procedural
+  BloodNeedle:
+    size_pixels: [8, 8]
+    speed: 10
+    lifetime_ticks: 45
+    tile_collision: true
+    launch_angles_degrees: [-30, -10, 10, 30]
+    penetration: 1
+    visual: procedural
+  MightArc:
+    target_count: 2
+    target_range_pixels: 180
+    distinct_targets: true
+    collision: "One-tick target-specific line collision."
+    penetration: 1
+    visual: procedural
+  RetinazerBeam:
+    size_pixels: [8, 8]
+    speed: 24
+    lifetime_ticks: 30
+    tile_collision: true
+    direction: stored_impact_direction
+    penetration: 1
+    visual: procedural
+  SpazmatismFlare:
+    size_pixels: [24, 24]
+    speed: 12
+    lifetime_ticks: 45
+    tile_collision: true
+    penetration: 1
+    on_hit: "Apply Cursed Inferno for 4 seconds."
+    visual: procedural
+  PrimeBlade:
+    size_pixels: [14, 14]
+    speed: 10
+    lifetime_ticks: 60
+    tile_collision: true
+    launch_pattern: "Four evenly spaced directions."
+    rotation_radians_per_tick: 0.4
+    penetration: 1
+    visual: procedural
+  SeekingPetal:
+    size_pixels: [10, 10]
+    speed: 8
+    lifetime_ticks: 90
+    tile_collision: true
+    launch_fan_degrees: [-50, -30, -10, 10, 30, 50]
+    outward_phase_ticks: 12
+    target_range_pixels: 500
+    turn_rate_degrees_per_tick: 10
+    prefer_distinct_targets: true
+    penetration: 1
+    visual: procedural
+  TempleShard:
+    size_pixels: [12, 12]
+    speed: 10
+    lifetime_ticks: 60
+    launch_pattern: "Six evenly spaced radial directions."
+    ignore_tiles_ticks: 12
+    penetration: 1
+    visual: procedural
 
 weapons:
-  - slot: pre_boss_spear
+  - slot: pre_boss
     internal_name: GoldSpear
     display_name: Gold Spear
     tooltip: "Trusty spear smeared with gold."
-    theme_summary: "A gold javelin that embeds in enemies and may inflict Midas."
-
+    theme_summary: "A golden javelin that embeds in enemies and may inflict Midas."
     balance:
-      vanilla_weapon_benchmark: "Pre-boss single-target melee weapon"
       base_damage: 15
       use_time_ticks: 32
-      use_animation_ticks: 16
+      use_animation_ticks: 32
       knockback: 5.0
       extra_crit: 0
-      shoot_speed: { raw: 5.0, effective: 10.0 }
-      rarity: "ItemRarityID.White (0)"
+      armor_penetration: 0
+      shoot_speed_raw: 5.0
+      shoot_speed_effective: 10.0
+      rarity: ItemRarityID.White
       sell_value: "2 Silver"
-
+      benchmark: "Pre-boss single-target melee weapon."
     acquisition:
-      predecessor: none
+      type: recipe
       ingredients:
         - { item: Gold Bar, quantity: 10 }
         - { item: Wood, quantity: 5 }
       crafting_station: Work Bench
-      progression_condition: none
-
+      boss_condition: none
     impact:
       damage_multiplier: 1.0
       can_crit: false
-      ignores_defense: false
       debuffs:
-        - { name: Midas, buff_id: 72, chance_percent: 50, duration_seconds: 5 }
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
+        - { name: Midas, chance_percent: 50, duration_seconds: 5 }
     embedded:
       fixed_dot_dps_per_spear: 0
-      visual_debuff: Midas
-      special_behavior: none
-
     detonation:
       damage_multiplier: 0.5
       radius_pixels: 32
       knockback: 3.0
       debuffs:
-        - { name: Midas, buff_id: 72, chance_percent: 50, duration_seconds: 5 }
-      secondary_projectiles: none
-
+        - { name: Midas, chance_percent: 50, duration_seconds: 5 }
+      children: none
     visuals:
       light: { color: gold, strength: 0.25 }
-      flight_dust: "Gold dust"
-      embedded_dust: "Sparse gold dust"
-      burst_dust: "Small coin-like gold sparkle"
-      trail: "Short projectile afterimages"
-      impact_sound: none
-      embedded_sound: none
-      burst_sound: "Soft metallic sparkle"
-
+      dust: [gold_flight, sparse_gold_embedded, coin_like_burst]
+      runtime_debuff_icon: Midas
     art:
-      reference_png: "spearsart/PreBossSpear.png"
-      item_png: "Content/Items/Weapons/Spears/GoldSpear.png"
-      projectile_png: TODO
-      burst_png: procedural
-      trail_png: none
-      debuff_icon_png: "Vanilla Buff_72"
-      glow_masks: none
+      reference_png: spearsart/PreBossSpear.png
+      item_png: Content/Items/Weapons/Spears/GoldSpear.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
-
-
-
-
-
-
-
-  - slot: post_eater_of_worlds_corruption
+  - slot: post_eater_of_worlds
     internal_name: NightsSpine
-    display_name: NightsSpine
+    display_name: "Night's Spine"
     tooltip: "The Corruption remembers every wound."
-    theme_summary: "A barbed Corruption spear that rots embedded targets. Its detonation releases a seeking shadow thorn that stuns the enemy it strikes."
-
+    theme_summary: "A barbed Corruption spear that rots embedded targets and releases a seeking shadow thorn that can stun its victim."
     balance:
-      vanilla_weapon_benchmark: "Stronger than the Rotted Fork, below Night's Edge"
       base_damage: 28
       use_time_ticks: 28
-      use_animation_ticks: 20
+      use_animation_ticks: 28
       knockback: 5.5
-      shoot_speed: { raw: 5.5, effective: 11.0 }
-      rarity: "ItemRarityID.Blue (1)"
+      extra_crit: 0
+      armor_penetration: 0
+      shoot_speed_raw: 5.5
+      shoot_speed_effective: 11.0
+      rarity: ItemRarityID.Blue
       sell_value: "50 Silver"
-
+      benchmark: "Above Rotted Fork and below Night's Edge."
     acquisition:
-      predecessor: GoldSpear
+      type: recipe
+      predecessor_consumed: GoldSpear
       ingredients:
+        - { item: GoldSpear, quantity: 1 }
         - { item: Demonite Bar, quantity: 12 }
         - { item: Shadow Scale, quantity: 8 }
       crafting_station: "Iron Anvil or Lead Anvil"
-      progression_condition: "Materials only; Shadow Scales normally require Eater of Worlds."
-
+      boss_condition: downed_eater_of_worlds
+      condition_key: Mods.Spears.Conditions.DownedEaterOfWorlds
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
       debuffs: none
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
     embedded:
       fixed_dot_dps_per_spear: 6
-      visual_debuff: none
-      special_behavior: "Corruption particles intensify during the final second."
-
+      special: "Corruption particles intensify during the final second."
     detonation:
       damage_multiplier: 0.65
       radius_pixels: 40
       knockback: 4.0
-      debuffs: none
-      secondary_projectiles:
-        - name: ShadowThorn
-          count: 1
-          damage_multiplier: 0.35
-          behavior: "Seeks the nearest hostile NPC within 240 pixels, then disappears after striking once."
-          on_hit:
-            debuff: Stunned
-            duration_seconds: 3
-            valid_targets: "Non-boss enemies that are not immune to crowd-control effects."
-            boss_behavior: "Bosses and crowd-control-immune enemies take damage but are not stunned."
-
+      children:
+        - { projectile: ShadowThorn, count: 1, damage_multiplier: 0.35 }
     visuals:
       light: { color: violet, strength: 0.35 }
-      flight_dust: "Purple corruption motes"
-      embedded_dust: "Dark-violet wisps"
-      burst_dust: "Purple splinters collapsing inward"
-      trail: "Violet afterimages with a dark center"
-      impact_sound: "Soft fleshy impact"
-      embedded_sound: none
-      burst_sound: "Muted shadow crack"
-
+      dust: [corruption_motes, dark_violet_wisps, shadow_splinters]
+      runtime_debuff_icon: Webbed
     art:
       reference_png: "spearsart/Post Eater of Worlds Spear.png"
-      item_png: "Content/Items/Weapons/Spears/NightsSpine.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: none
-      secondary_projectile_assets: [TODO_ShadowThorn_png]
-      glow_masks: TODO
+      item_png: Content/Items/Weapons/Spears/NightsSpine.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
-
-
-
-
-
-
-
-
-
-  - slot: post_brain_of_cthulhu_crimson
-    status: suggested
+  - slot: post_brain_of_cthulhu
     internal_name: BloodSpine
     display_name: Bloodspine
     tooltip: "It drinks before it blooms."
     theme_summary: "A living Crimson spear that bleeds embedded targets and bursts into blood needles."
-
     balance:
-      vanilla_weapon_benchmark: "Crimson counterpart to Voidspine"
       base_damage: 28
       use_time_ticks: 28
-      use_animation_ticks: 20
+      use_animation_ticks: 28
       knockback: 5.5
-      shoot_speed: { raw: 5.5, effective: 11.0 }
-      rarity: "ItemRarityID.Blue (1)"
+      extra_crit: 0
+      armor_penetration: 0
+      shoot_speed_raw: 5.5
+      shoot_speed_effective: 11.0
+      rarity: ItemRarityID.Blue
       sell_value: "50 Silver"
-
+      benchmark: "Crimson counterpart to Night's Spine."
     acquisition:
-      predecessor: GoldSpear
+      type: recipe
+      predecessor_consumed: GoldSpear
       ingredients:
+        - { item: GoldSpear, quantity: 1 }
         - { item: Crimtane Bar, quantity: 12 }
         - { item: Tissue Sample, quantity: 8 }
       crafting_station: "Iron Anvil or Lead Anvil"
-      progression_condition: "Materials only; Tissue Samples normally require Brain of Cthulhu."
-
+      boss_condition: downed_brain_of_cthulhu
+      condition_key: Mods.Spears.Conditions.DownedBrainOfCthulhu
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
       debuffs: none
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
     embedded:
       fixed_dot_dps_per_spear: 6
-      visual_debuff: none
-      special_behavior: "Red droplets pulse from the wound without healing the player."
-
+      special: "Red droplets pulse from the wound without healing the player."
     detonation:
       damage_multiplier: 0.65
       radius_pixels: 40
       knockback: 4.0
-      debuffs: none
-      secondary_projectiles:
-        - name: BloodNeedle
-          count: 4
-          damage_multiplier: 0.2
-          behavior: "Fans outward; each needle can hit one NPC once."
-
+      children:
+        - { projectile: BloodNeedle, count: 4, damage_multiplier: 0.2 }
     visuals:
       light: { color: crimson, strength: 0.3 }
-      flight_dust: "Crimson droplets"
-      embedded_dust: "Slow blood pulse"
-      burst_dust: "Four-way crimson spray"
-      trail: "Thin red afterimages"
-      impact_sound: "Soft fleshy impact"
-      embedded_sound: none
-      burst_sound: "Wet crystalline snap"
-
+      dust: [crimson_droplets, slow_blood_pulse, four_way_crimson_spray]
     art:
       reference_png: "spearsart/Post Brain of Cthulu Spear.png"
-      item_png: "Content/Items/Weapons/Spears/BloodSpine.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: none
-      secondary_projectile_assets: [TODO_BloodNeedle_png]
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      item_png: Content/Items/Weapons/Spears/BloodSpine.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_wall_of_flesh
-    status: suggested
     internal_name: Hellrend
     display_name: Hellrend
     tooltip: "Three flames tear open the horizon."
-    theme_summary: "A guaranteed Wall of Flesh drop that launches one molten spear with two wide-arcing companion spears beside it."
-
+    theme_summary: "A guaranteed Wall of Flesh drop that launches one molten spear with two wide-arcing companion spears."
     balance:
-      vanilla_weapon_benchmark: "Early-Hardmode ore spears at roughly 44-49 damage"
       base_damage: 52
       use_time_ticks: 25
-      use_animation_ticks: 18
+      use_animation_ticks: 25
       knockback: 6.0
-      shoot_speed: { raw: 6.0, effective: 12.0 }
-      rarity: "ItemRarityID.LightRed (4)"
+      extra_crit: 0
+      armor_penetration: 0
+      shoot_speed_raw: 6.0
+      shoot_speed_effective: 12.0
+      rarity: ItemRarityID.LightRed
       sell_value: "2 Gold"
-
+      benchmark: "Above the early-Hardmode ore spears."
     acquisition:
-      type: boss_drop
+      type: guaranteed_boss_drop
       source_npc: Wall of Flesh
       chance_percent: 100
       quantity: 1
-      difficulty_behavior: "Classic: guaranteed direct drop. Expert and Master: one guaranteed inside every Wall of Flesh Treasure Bag."
-      predecessor: none
-      ingredients: none
-      crafting_station: none
-      progression_condition: "Requires defeating Wall of Flesh."
-
+      classic: "Guaranteed direct world drop."
+      expert_and_master: "One guaranteed item in every Wall of Flesh Treasure Bag."
+    volley:
+      central:
+        offset_pixels: 0
+        angle_degrees: 0
+        damage_multiplier: 1.0
+      sides:
+        count: 2
+        perpendicular_offsets_pixels: [-12, 12]
+        angles_degrees: [-24, 24]
+        damage_multiplier_each: 0.5
+      behavior: "All three spears may embed, apply Hellfire, count toward the family cap, and detonate."
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
       debuffs:
         - { name: Hellfire, chance_percent: 100, duration_seconds: 5 }
-      secondary_effects:
-        - "Each use launches one central spear and two side spears simultaneously."
-        - "The two side spears spawn 12 pixels to either side of the central spear and arc outward at -24 and +24 degrees."
-        - "The central spear deals 100% projectile damage; each side spear deals 50% projectile damage."
-        - "All three spears can embed, apply Hellfire, and use the normal family cap and detonation rules."
-
     embedded:
       fixed_dot_dps_per_spear: 12
-      visual_debuff: Hellfire
-      special_behavior: "The spear glows more brightly as detonation approaches."
-
+      special: "The spear glows more brightly as detonation approaches."
     detonation:
       damage_multiplier: 0.75
       radius_pixels: 48
       knockback: 5.0
       debuffs:
         - { name: Hellfire, chance_percent: 100, duration_seconds: 5 }
-      secondary_projectiles: none
-
+      children: none
     visuals:
-      light: { color: orange-red, strength: 0.65 }
-      flight_dust: "Molten sparks"
-      embedded_dust: "Small flame tongues"
-      burst_dust: "Compact lava flare"
-      trail: "Orange-red afterimages"
-      impact_sound: "Hot metal impact"
-      embedded_sound: "Low fire crackle"
-      burst_sound: "Small fiery explosion"
-
+      light: { color: orange_red, strength: 0.65 }
+      dust: [molten_sparks, small_flames, compact_lava_flare]
+      runtime_debuff_icon: Hellfire
     art:
       reference_png: "spearsart/Post Wall of Flesh Spear.png"
-      item_png: "Content/Items/Weapons/Spears/Hellrend.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: "Vanilla Hellfire icon"
-      secondary_projectile_assets: none
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      item_png: Content/Items/Weapons/Spears/Hellrend.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_destroyer
-    status: suggested
     internal_name: Mightpiercer
     display_name: Mightpiercer
     tooltip: "Built from the Destroyer's broken spine."
     theme_summary: "A mechanical spear whose detonation arcs electricity between enemies."
-
     balance:
-      vanilla_weapon_benchmark: "Gungnir at 61 base damage"
       base_damage: 66
       use_time_ticks: 24
-      use_animation_ticks: 18
+      use_animation_ticks: 24
       knockback: 6.25
-      shoot_speed: { raw: 6.5, effective: 13.0 }
-      rarity: "ItemRarityID.Pink (5)"
+      extra_crit: 0
+      armor_penetration: 4
+      shoot_speed_raw: 6.5
+      shoot_speed_effective: 13.0
+      rarity: ItemRarityID.Pink
       sell_value: "3 Gold"
-
+      benchmark: "First fixed mechanical upgrade, above Gungnir."
     acquisition:
-      predecessor: Hellrend
+      type: recipe
+      predecessor_consumed: Hellrend
       ingredients:
+        - { item: Hellrend, quantity: 1 }
         - { item: Hallowed Bar, quantity: 12 }
         - { item: Soul of Might, quantity: 15 }
       crafting_station: "Mythril Anvil or Orichalcum Anvil"
-      progression_condition: "Materials only; fixed first mechanical upgrade."
-
+      boss_condition: DownedDestroyer
+      condition_key: Mods.Spears.Conditions.DownedDestroyer
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
-      armor_penetration: 4
       debuffs: none
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
     embedded:
       fixed_dot_dps_per_spear: 18
-      visual_debuff: none
-      special_behavior: "Red electrical pulses travel along the shaft."
-
+      special: "Red electrical pulses travel along the shaft."
     detonation:
       damage_multiplier: 0.8
       radius_pixels: 52
       knockback: 5.5
-      debuffs: none
-      secondary_projectiles:
-        - name: MightArc
-          count: 2
-          damage_multiplier: 0.4
-          behavior: "Jumps to two different hostile NPCs within 180 pixels."
-
+      children:
+        - { projectile: MightArc, count: 2, damage_multiplier: 0.4 }
     visuals:
-      light: { color: deep-red, strength: 0.45 }
-      flight_dust: "Red electrical sparks"
-      embedded_dust: "Mechanical red pulse"
-      burst_dust: "Dark metal fragments and red arcs"
-      trail: "Red-black afterimages"
-      impact_sound: "Metallic puncture"
-      embedded_sound: "Quiet electrical ticking"
-      burst_sound: "Electrical snap"
-
+      light: { color: deep_red, strength: 0.45 }
+      dust: [red_electrical_sparks, mechanical_red_pulse, metal_fragments_and_arcs]
     art:
       reference_png: "spearsart/Destroyer Spear.png"
-      item_png: "Content/Items/Weapons/Spears/Mightpiercer.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: none
-      secondary_projectile_assets: [TODO_MightArc_png]
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      item_png: Content/Items/Weapons/Spears/Mightpiercer.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_twins
-    status: suggested
     internal_name: GeminiGaze
     display_name: Gemini Gaze
     tooltip: "Two eyes. One point."
     theme_summary: "A dual-core spear alternating Retinazer laser and Spazmatism flame detonations."
-
     balance:
-      vanilla_weapon_benchmark: "Second fixed mechanical upgrade"
       base_damage: 78
       use_time_ticks: 22
-      use_animation_ticks: 16
+      use_animation_ticks: 22
       knockback: 6.5
-      shoot_speed: { raw: 7.0, effective: 14.0 }
-      rarity: "ItemRarityID.Pink (5)"
+      extra_crit: 0
+      armor_penetration: 0
+      shoot_speed_raw: 7.0
+      shoot_speed_effective: 14.0
+      rarity: ItemRarityID.Pink
       sell_value: "4 Gold"
-
+      benchmark: "Second fixed mechanical upgrade."
     acquisition:
-      predecessor: Mightpiercer
+      type: recipe
+      predecessor_consumed: Mightpiercer
       ingredients:
+        - { item: Mightpiercer, quantity: 1 }
         - { item: Hallowed Bar, quantity: 12 }
         - { item: Soul of Sight, quantity: 15 }
       crafting_station: "Mythril Anvil or Orichalcum Anvil"
-      progression_condition: "Materials only; follows Mightpiercer even if the Twins were defeated first."
-
+      boss_condition: DownedTwins
+      condition_key: Mods.Spears.Conditions.DownedTwins
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
-      debuffs: none
-      secondary_effects:
-        - "Alternates Retinazer and Spazmatism mode each throw."
-        - "Embeds after dealing direct damage once."
-
+      mode: "Alternate Retinazer and Spazmatism for each throw by that player."
     embedded:
       fixed_dot_dps_per_spear: 24
-      visual_debuff: none
-      special_behavior: "The embedded core preserves and displays its throw mode."
-
+      special: "The embedded core preserves and displays its throw mode."
     detonation:
       damage_multiplier: 0.85
       radius_pixels: 56
       knockback: 6.0
-      debuffs: none
-      secondary_projectiles:
-        - name: RetinazerBeam
-          mode: Retinazer
-          damage_multiplier: 0.5
-          behavior: "Fast line shot continuing along the impact direction."
-        - name: SpazmatismFlare
-          mode: Spazmatism
-          damage_multiplier: 0.5
-          behavior: "Wide flame burst that inflicts Cursed Inferno for 4 seconds."
-
+      children:
+        - { mode: Retinazer, projectile: RetinazerBeam, count: 1, damage_multiplier: 0.5 }
+        - { mode: Spazmatism, projectile: SpazmatismFlare, count: 1, damage_multiplier: 0.5 }
     visuals:
-      light: { color: alternating-red-and-green, strength: 0.55 }
-      flight_dust: "Alternating laser sparks and cursed flame"
-      embedded_dust: "Mode-colored eye pulse"
-      burst_dust: "Focused red beam or green flame bloom"
-      trail: "Alternating red and green afterimages"
-      impact_sound: "Mechanical eye impact"
-      embedded_sound: "Quiet optical charge"
-      burst_sound: "Mode-specific laser crack or flame burst"
-
+      light: { color: alternating_red_and_green, strength: 0.55 }
+      dust: [laser_sparks, cursed_flame, mode_colored_eye_pulse]
+      runtime_debuff_icon: "Cursed Inferno in Spazmatism mode"
     art:
-      reference_png: "spearsart/TwinsSpear.png"
-      item_png: "Content/Items/Weapons/Spears/GeminiGaze.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: "Vanilla Cursed Inferno icon for Spazmatism mode"
-      secondary_projectile_assets: [TODO_RetinazerBeam_png, TODO_SpazmatismFlare_png]
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      reference_png: spearsart/TwinsSpear.png
+      item_png: Content/Items/Weapons/Spears/GeminiGaze.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_skeletron_prime
-    status: suggested
     internal_name: Frightsteel
     display_name: Frightsteel
     tooltip: "The final machine learned fear."
     theme_summary: "The completed mechanical spear, bursting into four rotating Prime blades."
-
     balance:
-      vanilla_weapon_benchmark: "Final mechanical upgrade, above Gungnir and pre-Plantera alternatives"
       base_damage: 92
       use_time_ticks: 20
-      use_animation_ticks: 16
+      use_animation_ticks: 20
       knockback: 7.0
-      shoot_speed: { raw: 7.5, effective: 15.0 }
-      rarity: "ItemRarityID.LightPurple (6)"
+      extra_crit: 0
+      armor_penetration: 8
+      shoot_speed_raw: 7.5
+      shoot_speed_effective: 15.0
+      rarity: ItemRarityID.LightPurple
       sell_value: "5 Gold"
-
+      benchmark: "Final mechanical upgrade above Gungnir and pre-Plantera alternatives."
     acquisition:
-      predecessor: GeminiGaze
+      type: recipe
+      predecessor_consumed: GeminiGaze
       ingredients:
+        - { item: GeminiGaze, quantity: 1 }
         - { item: Hallowed Bar, quantity: 12 }
         - { item: Soul of Fright, quantity: 15 }
       crafting_station: "Mythril Anvil or Orichalcum Anvil"
-      progression_condition: "Materials only; final step of Destroyer -> Twins -> Skeletron Prime."
-
+      boss_condition: DownedSkeletronPrime
+      condition_key: Mods.Spears.Conditions.DownedSkeletronPrime
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
-      armor_penetration: 8
       debuffs: none
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
     embedded:
       fixed_dot_dps_per_spear: 30
-      visual_debuff: none
-      special_behavior: "Four blade silhouettes orbit the wound before detonation."
-
+      special: "Four blade silhouettes orbit the wound before detonation."
     detonation:
       damage_multiplier: 0.9
       radius_pixels: 60
       knockback: 6.5
-      debuffs: none
-      secondary_projectiles:
-        - name: PrimeBlade
-          count: 4
-          damage_multiplier: 0.35
-          behavior: "Launches in four directions, rotates while flying, and hits once."
-
+      children:
+        - { projectile: PrimeBlade, count: 4, damage_multiplier: 0.35 }
     visuals:
-      light: { color: cold-white-and-red, strength: 0.55 }
-      flight_dust: "White metal sparks with red cores"
-      embedded_dust: "Four-point mechanical pulse"
-      burst_dust: "Circular steel shrapnel ring"
-      trail: "Silver-red afterimages"
-      impact_sound: "Heavy mechanical puncture"
-      embedded_sound: "Slow ticking"
-      burst_sound: "Prime-style metallic explosion"
-
+      light: { color: cold_white_and_red, strength: 0.55 }
+      dust: [white_metal_sparks, four_point_mechanical_pulse, steel_shrapnel_ring]
     art:
       reference_png: "spearsart/Post Mechanical Boss.png"
-      item_png: "Content/Items/Weapons/Spears/Frightsteel.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: none
-      secondary_projectile_assets: [TODO_PrimeBlade_png]
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      item_png: Content/Items/Weapons/Spears/Frightsteel.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_plantera
-    status: suggested
     internal_name: FlowerSpike
     display_name: FlowerSpike
     tooltip: "Every wound takes root."
     theme_summary: "A living jungle spear that poisons embedded targets and blooms into seeking petals."
-
     balance:
-      vanilla_weapon_benchmark: "Post-Plantera ranged melee options such as Terra Blade"
       base_damage: 110
       use_time_ticks: 19
-      use_animation_ticks: 16
+      use_animation_ticks: 19
       knockback: 6.75
-      shoot_speed: { raw: 8.0, effective: 16.0 }
-      rarity: "ItemRarityID.Lime (7)"
+      extra_crit: 0
+      armor_penetration: 0
+      shoot_speed_raw: 8.0
+      shoot_speed_effective: 16.0
+      rarity: ItemRarityID.Lime
       sell_value: "6 Gold"
-
+      benchmark: "Post-Plantera ranged-melee tier."
     acquisition:
-      predecessor: Frightsteel
+      type: recipe
+      predecessor_consumed: Frightsteel
       ingredients:
+        - { item: Frightsteel, quantity: 1 }
         - { item: Chlorophyte Bar, quantity: 18 }
         - { item: Ectoplasm, quantity: 10 }
       crafting_station: "Mythril Anvil or Orichalcum Anvil"
-      progression_condition: "Materials only; Ectoplasm normally requires Plantera."
-
+      boss_condition: DownedPlantera
+      condition_key: Mods.Spears.Conditions.DownedPlantera
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
       debuffs:
         - { name: Venom, chance_percent: 100, duration_seconds: 6 }
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
     embedded:
       fixed_dot_dps_per_spear: 40
-      visual_debuff: Venom
-      special_behavior: "A flower bud grows around each embedded spear."
-
+      special: "A flower bud grows around each embedded spear."
     detonation:
       damage_multiplier: 1.0
       radius_pixels: 64
       knockback: 6.0
       debuffs:
         - { name: Venom, chance_percent: 100, duration_seconds: 6 }
-      secondary_projectiles:
-        - name: SeekingPetal
-          count: 6
-          damage_multiplier: 0.25
-          behavior: "Fans outward, then homes toward different nearby enemies."
-
+      children:
+        - { projectile: SeekingPetal, count: 6, damage_multiplier: 0.25 }
     visuals:
-      light: { color: pink-and-chlorophyte-green, strength: 0.5 }
-      flight_dust: "Pink petals and green spores"
-      embedded_dust: "Growing flower particles"
-      burst_dust: "Petal bloom"
-      trail: "Green vine afterimage with pink petals"
-      impact_sound: "Wooden thorn impact"
-      embedded_sound: "Quiet plant growth"
-      burst_sound: "Floral pop"
-
+      light: { color: pink_and_chlorophyte_green, strength: 0.5 }
+      dust: [pink_petals, green_spores, petal_bloom]
+      runtime_debuff_icon: Venom
     art:
       reference_png: "spearsart/Post Planterra Spear.png"
-      item_png: "Content/Items/Weapons/Spears/FlowerSpike.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: "Vanilla Venom icon"
-      secondary_projectile_assets: [TODO_SeekingPetal_png]
-      glow_masks: TODO
-
-
-
-
-
-
-
-
-
+      item_png: Content/Items/Weapons/Spears/FlowerSpike.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
   - slot: post_golem
     internal_name: Tepoztopilli
     display_name: Tepoztopilli
     tooltip: "The temple sun burns within."
     theme_summary: "A Lihzahrd spear with armor penetration and a burst of solar stone fragments."
-
     balance:
-      vanilla_weapon_benchmark: "Post-Golem Terra Blade and Influx Waver tier"
       base_damage: 135
       use_time_ticks: 18
-      use_animation_ticks: 16
+      use_animation_ticks: 18
       knockback: 7.25
-      shoot_speed: { raw: 8.5, effective: 17.0 }
-      rarity: "ItemRarityID.Yellow (8)"
+      extra_crit: 0
+      armor_penetration: 15
+      shoot_speed_raw: 8.5
+      shoot_speed_effective: 17.0
+      rarity: ItemRarityID.Yellow
       sell_value: "8 Gold"
-
+      benchmark: "Post-Golem Terra Blade and Influx Waver tier."
     acquisition:
-      predecessor: None
+      type: recipe
+      predecessor_consumed: none
       ingredients:
         - { item: Beetle Husk, quantity: 8 }
         - { item: Solar Tablet Fragment, quantity: 12 }
       crafting_station: "Mythril Anvil or Orichalcum Anvil"
-      progression_condition: "Materials only; Beetle Husks normally require Golem."
-
+      boss_condition: DownedGolem
+      condition_key: Mods.Spears.Conditions.DownedGolem
     impact:
       damage_multiplier: 1.0
       can_crit: true
-      ignores_defense: false
-      armor_penetration: 15
       debuffs:
-        - { name: OnFire, chance_percent: 100, duration_seconds: 6 }
-      secondary_effects:
-        - "Embeds after dealing direct damage once."
-
+        - { name: On Fire!, chance_percent: 100, duration_seconds: 6 }
     embedded:
       fixed_dot_dps_per_spear: 55
-      visual_debuff: OnFire
-      special_behavior: "Stone plates separate to expose an orange core before detonation."
-
+      special: "Stone plates separate to expose an orange core before detonation."
     detonation:
       damage_multiplier: 1.1
       radius_pixels: 72
       knockback: 7.0
       debuffs:
-        - { name: OnFire, chance_percent: 100, duration_seconds: 6 }
-      secondary_projectiles:
-        - name: TempleShard
-          count: 6
-          damage_multiplier: 0.3
-          behavior: "Launches radially, briefly passes through tiles, and hits once."
-
+        - { name: On Fire!, chance_percent: 100, duration_seconds: 6 }
+      children:
+        - { projectile: TempleShard, count: 6, damage_multiplier: 0.3 }
     visuals:
-      light: { color: amber-orange, strength: 0.75 }
-      flight_dust: "Lihzahrd sparks and stone dust"
-      embedded_dust: "Amber core pulse"
-      burst_dust: "Stone ring with orange light"
-      trail: "Warm orange afterimages"
-      impact_sound: "Stone-and-metal strike"
-      embedded_sound: "Low temple hum"
-      burst_sound: "Heavy stone burst"
-
+      light: { color: amber_orange, strength: 0.75 }
+      dust: [lihzahrd_sparks, stone_dust, amber_core_pulse]
+      runtime_debuff_icon: On Fire!
     art:
       reference_png: "spearsart/Post Golem.png"
-      item_png: "Content/Items/Weapons/Spears/Tepoztopilli.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: "Vanilla On Fire! icon"
-      secondary_projectile_assets: [TODO_TempleShard_png]
-      glow_masks: TODO
+      item_png: Content/Items/Weapons/Spears/Tepoztopilli.png
+      projectile_texture: item_png
+      additional_assets: procedural
 
-
-
-
-
-
-
-
-
-  - slot: post_moon_lord_endgame
+  - slot: post_moon_lord
     internal_name: MonarchsSpear
     display_name: "Monarch's Spear"
     tooltip: "Every spear in its lineage answers the call."
-    theme_summary: "An ultimate post-Moon-Lord spear assembled from every preceding progression spear, the vanilla Spear, and Daybreak. Each throw adopts one recipe spear's projectile and embedded effects."
-
+    theme_summary: "An ultimate spear assembled from the complete progression, a vanilla Spear, and Daybreak. Each main throw adopts one identity's projectile and embedded effects."
     balance:
-      vanilla_weapon_benchmark: "Post-Moon-Lord ultimate weapon; final DPS must be tested against Zenith before these provisional stats are approved."
       base_damage: 260
       use_time_ticks: 10
       use_animation_ticks: 10
       knockback: 8.0
       extra_crit: 6
-      shoot_speed: { raw: 10.0, effective: 20.0 }
-      rarity: "ItemRarityID.FieryRed (13)"
-      sell_value: "20 Gold"
-
-    acquisition:
-      predecessor: none
-      ingredients: all spears above and the regular spear + daybreak
-      crafting_station: workbench
-      progression_condition: "Materials only; requires all other custom spears and Daybreak."
-
-    impact:
-      damage_multiplier: 1.0
-      can_crit: true
-      ignores_defense: false
       armor_penetration: 20
-      debuffs: none
-      secondary_effects:
-        - "Successive throws cycle through the spears used in the recipe. Each selected spear travels in an arc before seeking the nearest valid target."
-        - "Each projectile preserves the selected spear's impact, embedded, debuff, and detonation behavior. Effects are not replaced by four celestial-pillar modes."
-        - "While the weapon is held, three randomly selected recipe spears hover above the player and fire at the nearest valid enemy as auxiliary projectiles."
-
+      shoot_speed_raw: 10.0
+      shoot_speed_effective: 20.0
+      rarity: ItemRarityID.Red
+      sell_value: "20 Gold"
+      benchmark: "Post-Moon-Lord ultimate weapon; best-case single-target output must remain below Zenith."
+    acquisition:
+      type: recipe
+      ingredients:
+        - { item: GoldSpear, quantity: 1 }
+        - { recipe_group: EvilSpear, quantity: 1 }
+        - { item: Hellrend, quantity: 1 }
+        - { item: Mightpiercer, quantity: 1 }
+        - { item: GeminiGaze, quantity: 1 }
+        - { item: Frightsteel, quantity: 1 }
+        - { item: FlowerSpike, quantity: 1 }
+        - { item: Tepoztopilli, quantity: 1 }
+        - { item: Spear, quantity: 1 }
+        - { item: Daybreak, quantity: 1 }
+      recipe_group_key: Mods.Spears.RecipeGroups.EvilSpear
+      recipe_group_members: [NightsSpine, BloodSpine]
+      crafting_station: Work Bench
+      boss_condition: DownedMoonLord
+      condition_key: Mods.Spears.Conditions.DownedMoonLord
+    identity_cycle:
+      deterministic_per_player: true
+      order:
+        - GoldSpear
+        - NightsSpine
+        - BloodSpine
+        - Hellrend
+        - Mightpiercer
+        - GeminiGaze
+        - Frightsteel
+        - FlowerSpike
+        - Tepoztopilli
+        - VanillaSpear
+        - Daybreak
+      evil_behavior: "Both evil identities occur in the attack cycle even though the recipe consumes only one evil spear."
+      gemini_behavior: "Alternate Retinazer and Spazmatism on successive Gemini identities."
+      inheritance:
+        - impact_debuffs
+        - embedded_fixed_dot
+        - selected_identity_detonation
+        - selected_identity_visuals
+      exceptions:
+        VanillaSpear: "No special debuff or fixed DoT."
+        Daybreak: "100 fixed DPS per embedded spear."
+    main_throw:
+      ballistic_ticks: 15
+      homing_range_pixels: 800
+      turn_rate_degrees_per_tick: 8
+      requires_line_of_sight_on_acquisition: true
+      can_crit: true
+    orbitals:
+      count: 3
+      identities: "Three distinct random identities from the eleven-entry cycle."
+      position: "Hover above the owning player while Monarch's Spear is held."
+      firing_stagger_ticks: 15
+      cooldown_ticks_each: 45
+      target_range_pixels: 800
+      target_selection: "Nearest visible hostile target; distance then NPC index."
+      damage_multiplier: 0.35
+      reroll_identity_after_firing: true
+      despawn_when:
+        - held_item_changes
+        - owner_dies
+        - owner_disconnects
+      source_flags: monarch_orbital
     embedded:
-      fixed_dot_dps_per_spear: "Inherited from the selected recipe spear; there is no additional universal fixed DoT."
-      visual_debuff: none
-      special_behavior: "Uses the selected recipe spear's embedded visuals and expiry behavior."
-
+      fixed_dot_dps_per_spear: "Inherited from selected identity; no extra universal fixed DoT."
+      duration_seconds: 5
+      family_cap_behavior: "Counts as one progression spear for its owner on its target."
     detonation:
-      damage_multiplier: 1.35
-      radius_pixels: 88
-      knockback: 8.0
-      debuffs:
-        - name: The Kings of Kings
-          duration_seconds: 5
-          behavior: "Non-boss enemies with compatible movement AI flee from the player; bosses and crowd-control-immune enemies are unaffected by the fear behavior."
-      secondary_projectiles: "Releases copies of the spears used in the recipe; exact count and spread remain to be finalized during balance testing."
-
+      selected_identity_burst: "Execute once before universal Monarch effects."
+      universal_burst:
+        damage_multiplier: 1.35
+        radius_pixels: 88
+        knockback: 8.0
+        can_crit: false
+        debuff: { name: The Kings of Kings, duration_seconds: 5 }
+      copies:
+        count: 11
+        pattern: "One copy of each identity, evenly spaced around 360 degrees."
+        speed: 12
+        lifetime_ticks: 45
+        damage_multiplier: 0.25
+        source_flags: monarch_copy
     visuals:
-      light: { color: recipe-spear color or full-spectrum rainbow, strength: 1.0 }
-      flight_dust: "Particles inherited from the selected recipe spear, with sparse rainbow refractions"
-      embedded_dust: "Embedded effects inherited from the selected recipe spear"
-      burst_dust: "A layered burst combining the selected spear's particles with a rainbow refraction"
-      trail: "Trail inherited from the selected recipe spear with a subtle prismatic edge"
-      impact_sound: "Bright celestial strike"
-      embedded_sound: "Quiet harmonic pulse"
-      burst_sound: "Layered celestial explosion"
-
+      light: { color: selected_identity_or_full_spectrum, strength: 1.0 }
+      dust: "Selected identity particles with sparse rainbow refractions."
+      runtime_debuff_icon: Confused
     art:
       reference_png: "spearsart/Post Moon Lord Spear.png"
-      item_png: "Content/Items/Weapons/Spears/MonarchsSpear.png"
-      projectile_png: TODO
-      burst_png: TODO
-      trail_png: TODO
-      debuff_icon_png: none
-      secondary_projectile_assets: "Reuse the projectile assets of every spear listed in the recipe."
-      glow_masks: TODO
+      item_png: Content/Items/Weapons/Spears/MonarchsSpear.png
+      projectile_texture: item_png
+      additional_assets: "Procedural; reuse profile colors and projectile drawing."
+
+validation:
+  yaml:
+    expected_weapon_count: 10
+    unique_internal_names: true
+    runtime_required_todos_allowed: false
+  icons:
+    expected_dimensions_pixels: [40, 40]
+    transparent_alpha_required: true
+  build:
+    warnings_allowed: 0
+    target_framework: net8.0
+    language_version: 12
+  progression:
+    test_partial_eater_does_not_unlock: true
+    test_each_boss_gate: true
+    test_predecessor_consumption: true
+    test_hellrend_all_difficulties: true
+    test_either_evil_spear_recipe_group: true
+  combat:
+    test_each_detonation_trigger: true
+    test_ninth_embed_evicts_oldest: true
+    test_independent_multiplayer_caps: true
+    test_hellrend_exactly_three_projectiles: true
+    test_gemini_alternation_per_player: true
+    test_crowd_control_immunities: true
+    test_monarch_cycle_orbitals_and_non_recursion: true
+  balance:
+    trials_per_tier: 3
+    trial_duration_seconds: 30
+    adjustment_order: "Change base damage first in 5% increments."
+    progression_goal: monotonic
+    monarch_ceiling: "Below Zenith in best-case single-target output."

@@ -1,6 +1,22 @@
-# tModLoader/.NET build output
+# tModLoader/.NET build output and packages
 [Bb]in/
 [Oo]bj/
+artifacts/
+packages/
+*.tmod
+*.tmod.bak
+*.nupkg
+*.snupkg
+
+# Test, coverage, profiling, and diagnostic output
+[Tt]est[Rr]esults/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+*.trx
+*.binlog
+*.dmp
 
 # IDE and per-user settings
 .vs/
@@ -14,7 +30,7 @@
 _ReSharper*/
 *.DotSettings.user
 
-# Local configuration and secrets
+# Local configuration, credentials, and history backups
 .env
 .env.*
 !.env.example
@@ -24,9 +40,17 @@ secrets.json
 *.p12
 *.pfx
 *.snk
+*.bundle
 
-# Local logs and operating-system metadata
+# Logs, temporary/editor files, and operating-system metadata
 *.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 Desktop.ini
