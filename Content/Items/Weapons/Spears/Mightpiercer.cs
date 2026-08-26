@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -17,7 +16,6 @@ public sealed class Mightpiercer : ProgressionSpearItem
 			.AddIngredient(ItemID.SoulofMight, 15)
 			.AddTile(TileID.MythrilAnvil);
 
-		SpearRecipeConditions.RequireDestroyer(recipe);
 		recipe.Register();
 	}
 }

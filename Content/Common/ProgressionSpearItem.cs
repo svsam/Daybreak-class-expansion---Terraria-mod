@@ -114,6 +114,17 @@ public abstract class ProgressionSpearItem : ModItem
 			Vector2 componentVelocity = velocity.SafeNormalize(Vector2.UnitX).RotatedBy(angle) * 8f;
 			ProgressionSpearProjectile.Spawn(source, position, componentVelocity, componentDamage, knockback, player.whoAmI, volley[i], SpearSourceFlags.MonarchVolley, sharedTarget);
 		}
+
+		int daybreakIndex = Projectile.NewProjectile(
+			source,
+			position,
+			velocity.SafeNormalize(Vector2.UnitX) * 8f,
+			ProjectileID.Daybreak,
+			componentDamage,
+			knockback,
+			player.whoAmI);
+		if (daybreakIndex >= 0 && daybreakIndex < Main.maxProjectiles)
+			Main.projectile[daybreakIndex].CritChance = 0;
 	}
 
 	private static int ScaleDamage(int damage, float multiplier) => Math.Max(1, (int)MathF.Round(damage * multiplier));

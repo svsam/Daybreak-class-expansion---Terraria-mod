@@ -1,7 +1,7 @@
 displayName = Spears
 author = SvSam
-version = 0.1.0
-homepage = https://github.com/svsam/Spears
+version = 0.2.0
+homepage = https://github.com/svsam/Daybreak-class-expansion---Terraria-mod
 side = Both
 includeSource = true
 buildIgnore = spearsart/*, DESIGN_MANIFEST.yaml, ASSET_PROVENANCE.md, Properties/*, tools/*, Spears.csproj

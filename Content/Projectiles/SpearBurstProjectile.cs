@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spears.Content.Common;
 using Terraria;
+using Terraria.Audio;
 using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
@@ -15,6 +16,7 @@ public sealed class SpearBurstProjectile : ModProjectile
 {
 	private bool _fromMonarch;
 	private bool _suppressVisuals;
+	private bool _visualsEmitted;
 
 	private SpearKind VisualKind => (SpearKind)(int)Projectile.ai[0];
 	private float Radius => Math.Max(1f, Projectile.ai[1]);
@@ -62,8 +64,37 @@ public sealed class SpearBurstProjectile : ModProjectile
 		}
 
 		WeaponProfile weapon = WeaponProfileRegistry.Get(VisualKind);
-		if (SpearVisualEffects.IsPrimaryUpdate(Projectile))
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile)) {
 			SpearVisualEffects.AddLight(Projectile.Center, weapon.Color, weapon.LightStrength, _fromMonarch ? SpearLightRole.MonarchBurst : SpearLightRole.Burst);
+			if (VisualKind == SpearKind.Gemini && !_visualsEmitted) {
+				_visualsEmitted = true;
+				EmitGreenSolarExplosion();
+			}
+		}
+	}
+
+	private void EmitGreenSolarExplosion()
+	{
+		if (Main.dedServ)
+			return;
+
+		SoundEngine.PlaySound(SoundID.Item14, Projectile.Center);
+		Color cursedGreen = new(80, 235, 105);
+
+		for (int i = 0; i < 24; i++) {
+			float angle = MathHelper.TwoPi * i / 24f + Main.rand.NextFloat(-0.12f, 0.12f);
+			Vector2 velocity = angle.ToRotationVector2() * Main.rand.NextFloat(3f, 6.5f);
+			Dust flame = Dust.NewDustPerfect(Projectile.Center, DustID.CursedTorch, velocity, 50, cursedGreen, Main.rand.NextFloat(1.4f, 2.2f));
+			flame.noGravity = true;
+			flame.fadeIn = 1.2f;
+		}
+
+		for (int i = 0; i < 12; i++) {
+			Vector2 velocity = Main.rand.NextVector2CircularEdge(2.8f, 2.8f) * Main.rand.NextFloat(0.45f, 1f);
+			Dust smoke = Dust.NewDustPerfect(Projectile.Center, DustID.Smoke, velocity, 100, cursedGreen, Main.rand.NextFloat(1.2f, 1.8f));
+			smoke.noGravity = true;
+			smoke.fadeIn = 1.1f;
+		}
 	}
 
 	public override bool? CanDamage() => _suppressVisuals ? false : null;
@@ -79,7 +110,7 @@ public sealed class SpearBurstProjectile : ModProjectile
 
 	public override bool PreDraw(ref Color lightColor)
 	{
-		if (_suppressVisuals)
+		if (_suppressVisuals || VisualKind == SpearKind.Gemini)
 			return false;
 		Texture2D pixel = TextureAssets.MagicPixel.Value;
 		Color color = Color.Lerp(lightColor, WeaponProfileRegistry.Get(VisualKind).Color, 0.4f) * (Projectile.timeLeft / 3f) * 0.45f;

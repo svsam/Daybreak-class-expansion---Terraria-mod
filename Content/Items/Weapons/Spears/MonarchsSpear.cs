@@ -24,7 +24,6 @@ public sealed class MonarchsSpear : ProgressionSpearItem
 			.AddIngredient(ItemID.DayBreak)
 			.AddTile(TileID.WorkBenches);
 
-		SpearRecipeConditions.RequireMoonLord(recipe);
 		recipe.Register();
 	}
 }

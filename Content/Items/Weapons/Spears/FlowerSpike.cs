@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -17,7 +16,6 @@ public sealed class FlowerSpike : ProgressionSpearItem
 			.AddIngredient(ItemID.Ectoplasm, 10)
 			.AddTile(TileID.MythrilAnvil);
 
-		SpearRecipeConditions.RequirePlantera(recipe);
 		recipe.Register();
 	}
 }

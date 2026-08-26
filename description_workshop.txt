@@ -1,15 +1,7 @@
 [h1]Spears[/h1]
 
-A complete ten-weapon progression for players who want to use thrown spears from the start of a world through post-Moon Lord.
+Spears adds ten throwable, Daybreak-style spears that span the full game progression. Each weapon has a unique effect, including lodging, debuffs, homing attacks, and explosions.
 
-[list]
-[*]Daybreak-style embedding, damage over time, and detonations
-[*]Distinct Corruption and Crimson upgrade paths
-[*]Guaranteed three-spear Hellrend drop from the Wall of Flesh
-[*]Unique mechanical, jungle, temple, and endgame secondary effects
-[*]Single-player, host-and-play, and dedicated-server code paths
-[/list]
-
-Built for Terraria 1.4.4.9 and tModLoader 2026.06. Complete the repository's gameplay acceptance matrix before publishing this build.
+Supports single-player and multiplayer.
 
 Spears is an independent, unofficial Terraria fan mod. It is not endorsed by, sponsored by, or affiliated with Re-Logic or the tModLoader team.

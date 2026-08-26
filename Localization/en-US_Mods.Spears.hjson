@@ -39,10 +39,7 @@ Items: {
 
 	Mightpiercer: {
 		DisplayName: Mightpiercer
-		Tooltip:
-			'''
-			Homes through an enemy, overshoots it, then strikes again
-			'''
+		Tooltip: Homes through an enemy, overshoots it, then strikes again
 	}
 
 	GeminiGaze: {
@@ -56,10 +53,7 @@ Items: {
 
 	Frightsteel: {
 		DisplayName: Post-Skeletron Prime Spear
-		Tooltip:
-			'''
-			Launches a returning spear, an inferno spear, and a bleeding saw
-			'''
+		Tooltip: Launches a returning spear, an inferno spear, and a bleeding saw
 	}
 
 	FlowerSpike: {
@@ -100,17 +94,6 @@ Buffs: {
 		DisplayName: Thorned
 		Description: Unable to move or attack
 	}
-}
-
-Conditions: {
-	DownedEaterOfWorlds: Requires defeating the Eater of Worlds
-	DownedBrainOfCthulhu: Requires defeating the Brain of Cthulhu
-	DownedDestroyer: Requires defeating the Destroyer
-	DownedTwins: Requires defeating the Twins
-	DownedSkeletronPrime: Requires defeating Skeletron Prime
-	DownedPlantera: Requires defeating Plantera
-	DownedGolem: Requires defeating Golem
-	DownedMoonLord: Requires defeating the Moon Lord
 }
 
 RecipeGroups.EvilSpear: Any evil-biome spear

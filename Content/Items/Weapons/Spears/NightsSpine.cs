@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -17,7 +16,6 @@ public sealed class NightsSpine : ProgressionSpearItem
 			.AddIngredient(ItemID.ShadowScale, 8)
 			.AddTile(TileID.Anvils);
 
-		SpearRecipeConditions.RequireEaterOfWorlds(recipe);
 		recipe.Register();
 	}
 }

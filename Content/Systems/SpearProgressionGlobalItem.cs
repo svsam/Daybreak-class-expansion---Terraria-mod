@@ -1,8 +1,8 @@
+using Spears.Content.Items.Weapons.Spears;
 using Terraria;
 using Terraria.GameContent.ItemDropRules;
 using Terraria.ID;
 using Terraria.ModLoader;
-using Spears.Content.Items.Weapons.Spears;
 
 namespace Spears.Content.Systems;
 

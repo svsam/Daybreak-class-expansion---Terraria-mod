@@ -621,15 +621,29 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 		if (HasOwnerAuthority && Profile.ExplosionDamageMultiplier > 0f && Profile.ExplosionRadius > 0) {
 			int burstDamage = Math.Max(1, (int)MathF.Round(_launchDamage * Profile.ExplosionDamageMultiplier));
-			SpearBurstProjectile.Spawn(
-				Projectile.GetSource_FromThis(),
-				Projectile.Center,
-				Projectile.owner,
-				burstDamage,
-				Projectile.knockBack,
-				Profile.TextureKind,
-				Profile.ExplosionRadius,
-				IsMonarchVolley);
+			if (AttackKind is SpearAttackKind.Hellrend or SpearAttackKind.Tepoztopilli) {
+				int explosionIndex = Projectile.NewProjectile(
+					Projectile.GetSource_FromThis(),
+					Projectile.Center,
+					Vector2.Zero,
+					ProjectileID.DaybreakExplosion,
+					burstDamage,
+					Projectile.knockBack,
+					Projectile.owner);
+				if (explosionIndex >= 0 && explosionIndex < Main.maxProjectiles)
+					Main.projectile[explosionIndex].CritChance = 0;
+			}
+			else {
+				SpearBurstProjectile.Spawn(
+					Projectile.GetSource_FromThis(),
+					Projectile.Center,
+					Projectile.owner,
+					burstDamage,
+					Projectile.knockBack,
+					Profile.TextureKind,
+					Profile.ExplosionRadius,
+					IsMonarchVolley);
+			}
 		}
 		Terminate();
 	}

@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -16,7 +15,6 @@ public sealed class Tepoztopilli : ProgressionSpearItem
 			.AddIngredient(ItemID.LunarTabletFragment, 12)
 			.AddTile(TileID.MythrilAnvil);
 
-		SpearRecipeConditions.RequireGolem(recipe);
 		recipe.Register();
 	}
 }

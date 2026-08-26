@@ -80,7 +80,7 @@ weapons:
     internal_name: NightsSpine
     display_name: Post-Eater of Worlds Spear
     balance: { base_damage: 36, use_time_ticks: 25, use_animation_ticks: 25, shoot_speed_raw: 5.5, knockback: 5.5, armor_penetration: 0, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: GoldSpear, boss_condition: downed_eater_of_worlds }
+    acquisition: { type: recipe, predecessor: GoldSpear }
     attack:
       components: [{ kind: Corruption, damage_multiplier: 1.0 }]
       behavior: "Contact once, lodge for 240 ticks, maintain Shadowflame while lodged and for 120 ticks afterward, then disappear without exploding."
@@ -90,7 +90,7 @@ weapons:
     internal_name: BloodSpine
     display_name: Bloodspine
     balance: { base_damage: 36, use_time_ticks: 25, use_animation_ticks: 25, shoot_speed_raw: 5.5, knockback: 5.5, armor_penetration: 0, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: GoldSpear, boss_condition: downed_brain_of_cthulhu }
+    acquisition: { type: recipe, predecessor: GoldSpear }
     attack:
       components: [{ kind: Crimson, damage_multiplier: 1.0 }]
       behavior: "Contact once, lodge for 240 ticks, maintain Ichor while lodged and for 120 ticks afterward, then disappear without exploding."
@@ -113,7 +113,7 @@ weapons:
     internal_name: Mightpiercer
     display_name: Mightpiercer
     balance: { base_damage: 88, use_time_ticks: 22, use_animation_ticks: 22, shoot_speed_raw: 7.0, knockback: 6.25, armor_penetration: 8, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: Hellrend, boss_condition: DownedDestroyer }
+    acquisition: { type: recipe, predecessor: Hellrend }
     attack:
       target_range_pixels: 800
       first_hit_damage_multiplier: 1.0
@@ -127,7 +127,7 @@ weapons:
     internal_name: GeminiGaze
     display_name: Post-Twins Spear
     balance: { base_damage: 108, use_time_ticks: 21, use_animation_ticks: 21, shoot_speed_raw: 7.5, knockback: 6.5, armor_penetration: 8, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: Mightpiercer, boss_condition: DownedTwins }
+    acquisition: { type: recipe, predecessor: Mightpiercer }
     attack:
       shared_target_range_pixels: 800
       components:
@@ -139,7 +139,7 @@ weapons:
     internal_name: Frightsteel
     display_name: Post-Skeletron Prime Spear
     balance: { base_damage: 132, use_time_ticks: 20, use_animation_ticks: 20, shoot_speed_raw: 8.0, knockback: 7.0, armor_penetration: 12, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: GeminiGaze, boss_condition: DownedSkeletronPrime }
+    acquisition: { type: recipe, predecessor: GeminiGaze }
     attack:
       shared_target_range_pixels: 800
       components:
@@ -152,7 +152,7 @@ weapons:
     internal_name: FlowerSpike
     display_name: FlowerSpike
     balance: { base_damage: 150, use_time_ticks: 19, use_animation_ticks: 19, shoot_speed_raw: 8.5, knockback: 6.75, armor_penetration: 10, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: Frightsteel, boss_condition: DownedPlantera }
+    acquisition: { type: recipe, predecessor: Frightsteel }
     attack:
       primary: { damage_multiplier: 1.0, lodged_duration_ticks: 240, debuff: Venom, residual_debuff_ticks: 120, explodes: false }
       alternate: { health_damage: 0, debuff: Poisoned, debuff_duration_ticks: 480, crowd_control: Thorned }
@@ -162,7 +162,7 @@ weapons:
     internal_name: Tepoztopilli
     display_name: Tepoztopilli
     balance: { base_damage: 170, use_time_ticks: 18, use_animation_ticks: 18, shoot_speed_raw: 9.0, knockback: 7.25, armor_penetration: 20, extra_crit: 0 }
-    acquisition: { type: recipe, predecessor: FlowerSpike, boss_condition: DownedGolem }
+    acquisition: { type: recipe, predecessor: FlowerSpike }
     attack:
       components: [{ kind: Tepoztopilli, damage_multiplier: 1.0 }]
       explosion: { damage_multiplier: 0.8, radius_pixels: 72, triggers: [npc, tile], can_crit: false }
@@ -173,7 +173,7 @@ weapons:
     internal_name: MonarchsSpear
     display_name: Monarch's Spear
     balance: { base_damage: 500, use_time_ticks: 16, use_animation_ticks: 16, shoot_speed_raw: 10.0, knockback: 8.0, armor_penetration: 30, extra_crit: 10 }
-    acquisition: { type: recipe, complete_progression_recipe: true, boss_condition: DownedMoonLord }
+    acquisition: { type: recipe, complete_progression_recipe: true }
     attack:
       combo: "Uses one through five launch a volley; use six launches the final spear and resets."
       volley:
@@ -181,7 +181,7 @@ weapons:
         homing_range_pixels: 1000
         homing_speed_pixels_per_tick: 16
         homing_turn_rate_degrees_per_tick: 10
-        components: [Gold, Corruption, Crimson, Hellrend, Mightpiercer, GeminiInferno, GeminiDamage, PrimeSaw, FlowerPrimary, Tepoztopilli]
+        components: [Gold, Corruption, Crimson, Hellrend, Mightpiercer, GeminiInferno, GeminiDamage, PrimeSaw, FlowerPrimary, Tepoztopilli, Daybreak]
         recursion: forbidden
       final:
         damage: 500

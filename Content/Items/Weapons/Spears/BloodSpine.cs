@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -17,7 +16,6 @@ public sealed class BloodSpine : ProgressionSpearItem
 			.AddIngredient(ItemID.TissueSample, 8)
 			.AddTile(TileID.Anvils);
 
-		SpearRecipeConditions.RequireBrainOfCthulhu(recipe);
 		recipe.Register();
 	}
 }

@@ -1,5 +1,4 @@
 using Spears.Content.Common;
-using Spears.Content.Systems;
 using Terraria;
 using Terraria.ID;
 
@@ -17,7 +16,6 @@ public sealed class GeminiGaze : ProgressionSpearItem
 			.AddIngredient(ItemID.SoulofSight, 15)
 			.AddTile(TileID.MythrilAnvil);
 
-		SpearRecipeConditions.RequireTwins(recipe);
 		recipe.Register();
 	}
 }
