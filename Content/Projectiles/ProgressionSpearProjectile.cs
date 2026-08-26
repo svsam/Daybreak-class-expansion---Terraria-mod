@@ -4,7 +4,6 @@ using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
-using Spears.Content.Buffs;
 using Spears.Content.Common;
 using Spears.Content.NPCs;
 using Terraria;
@@ -17,38 +16,44 @@ namespace Spears.Content.Projectiles;
 
 public sealed class ProgressionSpearProjectile : ModProjectile
 {
-	private const int FlightGravityDelayUpdates = 45;
-	private const int MaximumFlightUpdates = 3600;
-	private const int EmbeddedLifetimeUpdates = 600;
+	private const int FlightTimeoutTicks = 600;
 	private const int EmbeddedCapPerOwner = 8;
+	private const float MaximumTrailGap = 160f;
+	private const float PierceOvershootDistance = 96f;
 
+	private SpearSourceFlags _sourceFlags;
 	private Vector2 _embedOffset;
 	private Vector2 _impactDirection = Vector2.UnitX;
-	private SpearKind _identity;
-	private SpearSourceFlags _sourceFlags = SpearSourceFlags.Main;
-	private bool _geminiSpazmatismMode;
-	private bool _detonated;
-	private bool _suppressVisualsWhileAwaitingRemoval;
-	private bool _terminalVisualSuppression;
-	private int _homingTargetIndex = -1;
+	private Vector2 _stateOrigin;
 	private int _launchDamage;
-	private int _embeddedTargetType = -1;
-	private int _localEmbeddedTargetIndex = -1;
-	private int _localEmbeddedTargetSpawnSerial;
+	private int _stateTimer;
+	private int _lockedTargetType = -1;
+	private int _localTargetIndex = -1;
+	private int _localTargetSpawnSerial;
+	private int _nextTargetSearchTick;
+	private bool _terminal;
+	private bool _pulseDamageActive;
+	private bool _suppressVisuals;
+	private bool _awaitingOwnerRemoval;
 
-	private bool IsFlying => Projectile.ai[1] == 0f;
-	private bool IsEmbedded => Projectile.ai[1] > 0f;
-	private int EmbeddedTargetIndex => (int)Projectile.ai[1] - 1;
+	private SpearAttackKind AttackKind => (SpearAttackKind)(int)Projectile.ai[0];
+	private SpearAttackProfile Profile => WeaponProfileRegistry.GetAttack(AttackKind);
+	private SpearProjectileState State {
+		get => (SpearProjectileState)(int)Projectile.ai[1];
+		set => Projectile.ai[1] = (float)value;
+	}
+	private int TargetIndex {
+		get => (int)Projectile.ai[2] - 1;
+		set => Projectile.ai[2] = value + 1;
+	}
 	private bool HasOwnerAuthority => Main.netMode == NetmodeID.SinglePlayer || Projectile.owner == Main.myPlayer;
-	private bool CanCreateProgressionEffects => (_sourceFlags & SpearSourceFlags.Main) != 0 && (_sourceFlags & (SpearSourceFlags.Auxiliary | SpearSourceFlags.Orbital | SpearSourceFlags.Copy)) == 0;
-	private bool IsMonarchSource => (_sourceFlags & SpearSourceFlags.Monarch) != 0;
-	internal SpearKind EffectiveKind => (_sourceFlags & SpearSourceFlags.Monarch) != 0 ? _identity : (SpearKind)(int)Projectile.ai[0];
+	private bool IsMonarchVolley => (_sourceFlags & SpearSourceFlags.MonarchVolley) != 0;
 
 	public override string Texture => "Terraria/Images/Projectile_0";
 
 	public override void SetStaticDefaults()
 	{
-		ProjectileID.Sets.TrailCacheLength[Type] = 5;
+		ProjectileID.Sets.TrailCacheLength[Type] = 8;
 		ProjectileID.Sets.TrailingMode[Type] = 2;
 	}
 
@@ -66,14 +71,21 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		Projectile.timeLeft = 7200;
 		Projectile.alpha = 255;
 		Projectile.netImportant = true;
-		Projectile.hide = false;
+		Projectile.usesLocalNPCImmunity = true;
+		Projectile.localNPCHitCooldown = 10;
 	}
 
 	public override void OnSpawn(IEntitySource source)
 	{
-		_identity = (SpearKind)(int)Projectile.ai[0];
+		_launchDamage = Math.Max(1, Projectile.damage);
 		_impactDirection = Projectile.velocity.SafeNormalize(Vector2.UnitX);
-		_launchDamage = Projectile.damage;
+		Projectile.friendly = !Profile.IsDebuffOnly;
+		Projectile.tileCollide = Profile.Behavior != SpearAttackBehavior.MonarchFinal;
+		if (Profile.Behavior is SpearAttackBehavior.Contact or SpearAttackBehavior.ExplodeOnContact or SpearAttackBehavior.MonarchFinal)
+			Projectile.penetrate = 1;
+		if (!Profile.CanCrit)
+			Projectile.CritChance = 0;
+		ResetTrailHistory();
 	}
 
 	internal static int Spawn(
@@ -83,252 +95,506 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		int damage,
 		float knockback,
 		int owner,
-		SpearKind kind,
-		SpearSourceFlags sourceFlags = SpearSourceFlags.Main,
-		SpearKind? identity = null,
-		bool geminiSpazmatismMode = false)
+		SpearAttackKind attackKind,
+		SpearSourceFlags sourceFlags = SpearSourceFlags.None,
+		int initialTarget = -1)
 	{
-		int index = Projectile.NewProjectile(source, position, velocity, ModContent.ProjectileType<ProgressionSpearProjectile>(), damage, knockback, owner, (float)kind);
-		if (index >= 0 && index < Main.maxProjectiles && Main.projectile[index].ModProjectile is ProgressionSpearProjectile spear) {
-			spear._sourceFlags = sourceFlags;
-			spear._identity = identity ?? kind;
-			spear._geminiSpazmatismMode = geminiSpazmatismMode;
-			spear._impactDirection = velocity.SafeNormalize(Vector2.UnitX);
-			spear._launchDamage = damage;
-			Main.projectile[index].netUpdate = true;
-		}
+		int index = Projectile.NewProjectile(
+			source,
+			position,
+			velocity,
+			ModContent.ProjectileType<ProgressionSpearProjectile>(),
+			Math.Max(1, damage),
+			knockback,
+			owner,
+			(float)attackKind,
+			(float)SpearProjectileState.Flying,
+			initialTarget + 1);
 
+		if (index < 0 || index >= Main.maxProjectiles || Main.projectile[index].ModProjectile is not ProgressionSpearProjectile spear)
+			return index;
+
+		spear._sourceFlags = sourceFlags;
+		spear._launchDamage = Math.Max(1, damage);
+		spear._impactDirection = velocity.SafeNormalize(Vector2.UnitX);
+		SpearAttackProfile profile = WeaponProfileRegistry.GetAttack(attackKind);
+		if (sourceFlags.HasFlag(SpearSourceFlags.MonarchVolley) || !profile.CanCrit)
+			Main.projectile[index].CritChance = 0;
+
+		float acquisitionRange = sourceFlags.HasFlag(SpearSourceFlags.MonarchVolley) ? 1000f : profile.HomingRange;
+		if (initialTarget < 0 && acquisitionRange > 0f && (Main.netMode == NetmodeID.SinglePlayer || owner == Main.myPlayer))
+			spear.TargetIndex = SpearTargeting.FindClosestVisibleTarget(position, acquisitionRange);
+
+		Main.projectile[index].friendly = !profile.IsDebuffOnly;
+		Main.projectile[index].netUpdate = true;
 		return index;
 	}
 
 	public override void SendExtraAI(BinaryWriter writer)
 	{
-		writer.Write((byte)_identity);
 		writer.Write((byte)_sourceFlags);
-		writer.Write(_geminiSpazmatismMode);
-		writer.Write(_detonated);
 		writer.Write(_embedOffset.X);
 		writer.Write(_embedOffset.Y);
 		writer.Write(_impactDirection.X);
 		writer.Write(_impactDirection.Y);
-		writer.Write((short)_homingTargetIndex);
+		writer.Write(_stateOrigin.X);
+		writer.Write(_stateOrigin.Y);
 		writer.Write(_launchDamage);
-		writer.Write(_embeddedTargetType);
+		writer.Write(_stateTimer);
+		writer.Write(_lockedTargetType);
+		writer.Write(_terminal);
 	}
 
 	public override void ReceiveExtraAI(BinaryReader reader)
 	{
-		_identity = (SpearKind)reader.ReadByte();
 		_sourceFlags = (SpearSourceFlags)reader.ReadByte();
-		_geminiSpazmatismMode = reader.ReadBoolean();
-		_detonated = reader.ReadBoolean();
 		_embedOffset = new Vector2(reader.ReadSingle(), reader.ReadSingle());
 		_impactDirection = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-		_homingTargetIndex = reader.ReadInt16();
+		_stateOrigin = new Vector2(reader.ReadSingle(), reader.ReadSingle());
 		_launchDamage = reader.ReadInt32();
-		_embeddedTargetType = reader.ReadInt32();
-		_suppressVisualsWhileAwaitingRemoval = _detonated;
-		_terminalVisualSuppression = _detonated;
+		_stateTimer = reader.ReadInt32();
+		_lockedTargetType = reader.ReadInt32();
+		_terminal = reader.ReadBoolean();
+		_suppressVisuals = _terminal;
 	}
 
 	public override void AI()
 	{
-		if (_detonated) {
-			SuppressVisualsWhileAwaitingRemoval(terminal: true);
-			if (Main.netMode != NetmodeID.MultiplayerClient)
-				Projectile.Kill();
+		if (_terminal) {
+			SuppressAndRemoveOnServer();
 			return;
 		}
 
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers || !Main.player[Projectile.owner].active) {
-			SuppressVisualsWhileAwaitingRemoval();
-			if (Main.netMode != NetmodeID.MultiplayerClient)
-				Projectile.Kill();
+			SuppressAndRemoveOnServer();
 			return;
 		}
-		RestoreTransientVisuals();
+		if (_awaitingOwnerRemoval) {
+			_suppressVisuals = true;
+			return;
+		}
 
-		if (IsEmbedded)
-			EmbeddedAI();
-		else
-			FlyingAI();
+		_suppressVisuals = false;
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile))
+			_stateTimer++;
+
+		switch (State) {
+			case SpearProjectileState.Flying:
+				FlyingAI();
+				break;
+			case SpearProjectileState.Lodged:
+				LodgedAI();
+				break;
+			case SpearProjectileState.Penetrating:
+				PenetratingAI();
+				break;
+			case SpearProjectileState.Overshooting:
+				OvershootingAI();
+				break;
+			case SpearProjectileState.Returning:
+				ReturningAI();
+				break;
+			case SpearProjectileState.Sawing:
+				SawingAI();
+				break;
+			default:
+				SuppressAndRemoveOnServer();
+				break;
+		}
 	}
 
 	private void FlyingAI()
 	{
-		Projectile.ai[2]++;
 		Projectile.alpha = Math.Max(0, Projectile.alpha - 25);
 		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
 		Projectile.rotation = _impactDirection.ToRotation() + MathHelper.PiOver4;
 
-		if ((SpearKind)(int)Projectile.ai[0] == SpearKind.Monarch && Projectile.ai[2] >= 30f) {
-			if (HasOwnerAuthority && !IsValidHomingTarget(_homingTargetIndex) && (int)Projectile.ai[2] % 10 == 0) {
-				int nextTarget = SpearTargeting.FindClosestVisibleTarget(Projectile.Center, 800f);
-				if (nextTarget != _homingTargetIndex) {
-					_homingTargetIndex = nextTarget;
-					Projectile.netUpdate = true;
-				}
-			}
-			if (HasOwnerAuthority && IsValidHomingTarget(_homingTargetIndex)) {
-				SpearTargeting.HomeTowards(Projectile, Main.npc[_homingTargetIndex].Center, Math.Max(Projectile.velocity.Length(), 1f), MathHelper.ToRadians(4f));
-				if ((int)Projectile.ai[2] % 10 == 0)
-					Projectile.netUpdate = true;
-			}
+		if (Profile.IsDebuffOnly)
+			CheckDebuffOnlyCollision();
+
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile)) {
+			if (!_terminal)
+				UpdateFlightMovement();
+
+			if (_stateTimer >= FlightTimeoutTicks && HasOwnerAuthority)
+				Terminate();
 		}
-		else if (Projectile.ai[2] > FlightGravityDelayUpdates) {
+
+		EmitFlightVisuals();
+	}
+
+	private void UpdateFlightMovement()
+	{
+		float homingRange = IsMonarchVolley ? 1000f : Profile.HomingRange;
+		if (homingRange > 0f) {
+			UpdateHoming(homingRange, IsMonarchVolley ? 10f : Profile.HomingTurnDegrees);
+			return;
+		}
+
+		if (_stateTimer > 23) {
 			Projectile.velocity.X *= 0.995f;
 			Projectile.velocity.Y += 0.15f;
 		}
+	}
 
-		if (Projectile.ai[2] >= MaximumFlightUpdates) {
+	private void UpdateHoming(float range, float turnDegrees)
+	{
+		if (!HasOwnerAuthority)
+			return;
+
+		if (!IsValidTarget(TargetIndex) && _stateTimer >= _nextTargetSearchTick) {
+			_nextTargetSearchTick = _stateTimer + 10;
+			SetTarget(SpearTargeting.FindClosestVisibleTarget(Projectile.Center, range));
+		}
+
+		if (!IsValidTarget(TargetIndex))
+			return;
+
+		float rawSpeed = AttackKind == SpearAttackKind.MonarchFinal || IsMonarchVolley
+			? 8f
+			: WeaponProfileRegistry.Get(Profile.TextureKind).ShootSpeed;
+		SpearTargeting.HomeTowards(Projectile, Main.npc[TargetIndex].Center, rawSpeed, MathHelper.ToRadians(turnDegrees));
+		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
+		if (_stateTimer % 10 == 0)
+			Projectile.netUpdate = true;
+	}
+
+	private void CheckDebuffOnlyCollision()
+	{
+		if (Main.netMode == NetmodeID.MultiplayerClient)
+			return;
+
+		int targetIndex = FindCollidingTarget();
+		if (targetIndex < 0)
+			return;
+
+		NPC target = Main.npc[targetIndex];
+		if (Profile.Behavior == SpearAttackBehavior.FlowerThorn) {
+			target.AddBuff(BuffID.Poisoned, 480);
+			target.GetGlobalNPC<SpearGlobalNPC>().TryApplyThorned(target);
+		}
+		else if (Profile.DebuffType > 0) {
+			target.AddBuff(Profile.DebuffType, Profile.DebuffDurationTicks);
+		}
+
+		Terminate();
+	}
+
+	private int FindCollidingTarget()
+	{
+		if (IsValidTarget(TargetIndex) && Projectile.Hitbox.Intersects(Main.npc[TargetIndex].Hitbox))
+			return TargetIndex;
+
+		for (int i = 0; i < Main.maxNPCs; i++) {
+			NPC npc = Main.npc[i];
+			if (npc.active && !npc.friendly && !npc.dontTakeDamage && Projectile.Hitbox.Intersects(npc.Hitbox))
+				return i;
+		}
+		return -1;
+	}
+
+	private void LodgedAI()
+	{
+		if (!TryGetLockedTarget(out NPC target)) {
 			if (HasOwnerAuthority) {
-				if (CanCreateProgressionEffects)
+				if (Profile.Behavior == SpearAttackBehavior.LodgeExplode)
 					Detonate();
 				else
-					Projectile.Kill();
+					Terminate();
 			}
 			else {
-				SuppressVisualsWhileAwaitingRemoval(terminal: true);
+				_suppressVisuals = true;
 			}
 			return;
 		}
 
-		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Color visualColor = GetVisualColor(profile);
-		bool monarchWithoutTarget = (SpearKind)(int)Projectile.ai[0] == SpearKind.Monarch && Projectile.ai[2] >= 30f && !IsValidHomingTarget(_homingTargetIndex);
-		if (SpearVisualEffects.IsPrimaryUpdate(Projectile) && !_suppressVisualsWhileAwaitingRemoval && !monarchWithoutTarget) {
-			SpearLightRole lightRole = IsMonarchSource ? SpearLightRole.MonarchMainFlight : SpearLightRole.MainFlight;
-			SpearVisualEffects.AddLight(Projectile.Center, visualColor, profile.Spear.LightStrength, lightRole);
-			int dustChance = IsMonarchSource ? 12 : 8;
-			if (!Main.dedServ && Main.rand.NextBool(dustChance))
-				SpearVisualEffects.SpawnTintedDust(Projectile.Center, -Projectile.velocity * 0.04f, 140, GetDustColor(visualColor), 0.65f);
-		}
-	}
+		AttachToTarget(target);
+		if (Profile.Behavior == SpearAttackBehavior.LodgeDebuff && Profile.DebuffType > 0 && SpearVisualEffects.IsPrimaryUpdate(Projectile))
+			target.AddBuff(Profile.DebuffType, Profile.LingeringDebuffTicks);
 
-	private static bool IsValidHomingTarget(int index)
-	{
-		return index >= 0 && index < Main.maxNPCs && Main.npc[index].active && Main.npc[index].CanBeChasedBy();
-	}
-
-	private void EmbeddedAI()
-	{
-		Projectile.ai[2]++;
-		Projectile.damage = 0;
-		Projectile.velocity = Vector2.Zero;
-		Projectile.tileCollide = false;
-		Projectile.alpha = 0;
-
-		if (!TryGetEmbeddedTarget(out NPC target)) {
-			if (HasOwnerAuthority)
+		if (_stateTimer >= Profile.LodgedDurationTicks && HasOwnerAuthority) {
+			if (Profile.Behavior == SpearAttackBehavior.LodgeExplode)
 				Detonate();
 			else
-				SuppressVisualsWhileAwaitingRemoval();
+				Terminate();
 			return;
 		}
 
-		target.GetGlobalNPC<SpearGlobalNPC>().RegisterEmbedded(Projectile.whoAmI);
+		EmitAttachedVisuals();
+	}
+
+	private void SawingAI()
+	{
+		if (!TryGetLockedTarget(out NPC target)) {
+			if (HasOwnerAuthority)
+				Terminate();
+			else
+				_suppressVisuals = true;
+			return;
+		}
+
+		AttachToTarget(target);
+		Projectile.rotation += 0.45f;
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile) && _stateTimer > 0 && _stateTimer % 30 == 0 && _stateTimer <= 240 && HasOwnerAuthority)
+			DealSawPulse();
+
+		if (_stateTimer >= Profile.LodgedDurationTicks && HasOwnerAuthority) {
+			Terminate();
+			return;
+		}
+
+		EmitAttachedVisuals();
+	}
+
+	private void DealSawPulse()
+	{
+		Projectile.damage = _launchDamage;
+		Projectile.friendly = true;
+		_pulseDamageActive = true;
+		Projectile.Damage();
+		_pulseDamageActive = false;
+		Projectile.friendly = false;
+		Projectile.damage = 0;
+	}
+
+	private void PenetratingAI()
+	{
+		if (!TryGetLockedTarget(out NPC target)) {
+			if (HasOwnerAuthority)
+				Terminate();
+			return;
+		}
+
+		float rawSpeed = WeaponProfileRegistry.Get(Profile.TextureKind).ShootSpeed;
+		Projectile.velocity = _impactDirection * rawSpeed;
+		Projectile.rotation = _impactDirection.ToRotation() + MathHelper.PiOver4;
+		float projectedHalfExtent = MathF.Abs(_impactDirection.X) * target.width * 0.5f + MathF.Abs(_impactDirection.Y) * target.height * 0.5f;
+		float distancePastCenter = Vector2.Dot(Projectile.Center - target.Center, _impactDirection);
+		if (distancePastCenter >= projectedHalfExtent + 8f || _stateTimer >= 60)
+			TransitionTo(SpearProjectileState.Overshooting, Projectile.Center);
+	}
+
+	private void OvershootingAI()
+	{
+		if (!TryGetLockedTarget(out NPC target)) {
+			if (HasOwnerAuthority)
+				Terminate();
+			return;
+		}
+
+		Projectile.velocity = _impactDirection * WeaponProfileRegistry.Get(Profile.TextureKind).ShootSpeed;
+		if (Vector2.DistanceSquared(Projectile.Center, _stateOrigin) < PierceOvershootDistance * PierceOvershootDistance && _stateTimer < 30)
+			return;
+
+		TransitionTo(SpearProjectileState.Returning, Projectile.Center);
+		float returnSpeed = WeaponProfileRegistry.Get(Profile.TextureKind).ShootSpeed * 1.15f;
+		Projectile.velocity = Projectile.DirectionTo(target.Center) * returnSpeed;
+	}
+
+	private void ReturningAI()
+	{
+		if (!TryGetLockedTarget(out NPC target)) {
+			if (HasOwnerAuthority)
+				Terminate();
+			return;
+		}
+
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile) && HasOwnerAuthority) {
+			float speed = WeaponProfileRegistry.Get(Profile.TextureKind).ShootSpeed * 1.15f;
+			SpearTargeting.HomeTowards(Projectile, target.Center, speed, MathHelper.ToRadians(12f));
+			if (_stateTimer % 8 == 0)
+				Projectile.netUpdate = true;
+		}
+		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
+		Projectile.rotation = _impactDirection.ToRotation() + MathHelper.PiOver4;
+		if (_stateTimer >= 180 && HasOwnerAuthority)
+			Terminate();
+
+		EmitFlightVisuals();
+	}
+
+	private void AttachToTarget(NPC target)
+	{
 		Projectile.Center = target.Center + _embedOffset;
 		Projectile.gfxOffY = target.gfxOffY;
-		Projectile.rotation = _impactDirection.ToRotation() + MathHelper.PiOver4;
-
-		if (Projectile.ai[2] >= EmbeddedLifetimeUpdates) {
-			if (HasOwnerAuthority)
-				Detonate();
-			else
-				SuppressVisualsWhileAwaitingRemoval(terminal: true);
-			return;
-		}
-
-		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Color visualColor = GetVisualColor(profile);
-		if (SpearVisualEffects.IsPrimaryUpdate(Projectile) && !_suppressVisualsWhileAwaitingRemoval) {
-			float profileLightStrength = profile.Spear.LightStrength;
-			SpearLightRole lightRole = IsMonarchSource ? SpearLightRole.MonarchEmbedded : SpearLightRole.Embedded;
-			if (EffectiveKind == SpearKind.Hellrend) {
-				float progress = MathHelper.Clamp(Projectile.ai[2] / EmbeddedLifetimeUpdates, 0f, 1f);
-				profileLightStrength = MathHelper.Lerp(profileLightStrength * 0.55f, profileLightStrength, progress);
-				if (!IsMonarchSource)
-					lightRole = SpearLightRole.HellrendEmbedded;
-			}
-			SpearVisualEffects.AddLight(Projectile.Center, visualColor, profileLightStrength, lightRole);
-			if (!Main.dedServ)
-				EmitEmbeddedDust(visualColor);
-		}
-
+		Projectile.velocity = Vector2.Zero;
+		Projectile.damage = 0;
+		Projectile.tileCollide = false;
+		Projectile.alpha = 0;
 	}
 
-	public override bool? CanDamage() => IsFlying && !_detonated && !_suppressVisualsWhileAwaitingRemoval ? null : false;
+	public override bool? CanDamage()
+	{
+		if (_terminal || _suppressVisuals || Profile.IsDebuffOnly)
+			return false;
+		if (_pulseDamageActive)
+			return true;
+		return State is SpearProjectileState.Flying or SpearProjectileState.Returning ? null : false;
+	}
 
-	public override bool? CanHitNPC(NPC target) => IsFlying && !_detonated && !_suppressVisualsWhileAwaitingRemoval && target.active && !target.friendly && !target.dontTakeDamage ? null : false;
+	public override bool? CanHitNPC(NPC target)
+	{
+		if (Profile.IsDebuffOnly || _terminal || _suppressVisuals)
+			return false;
+		if (!target.active || target.friendly || target.dontTakeDamage)
+			return false;
+
+		if (_pulseDamageActive || State == SpearProjectileState.Returning)
+			return target.whoAmI == TargetIndex ? null : false;
+
+		if (State != SpearProjectileState.Flying)
+			return false;
+
+		bool targetedAttack = IsMonarchVolley || Profile.HasHoming;
+		return targetedAttack && IsValidTarget(TargetIndex) && target.whoAmI != TargetIndex ? false : null;
+	}
 
 	public override void ModifyHitNPC(NPC target, ref NPC.HitModifiers modifiers)
 	{
-		WeaponProfile attackProfile = WeaponProfileRegistry.Get((SpearKind)(int)Projectile.ai[0]);
-		if (!attackProfile.Spear.DirectHitCanCrit)
+		if (!Profile.CanCrit || IsMonarchVolley || _pulseDamageActive)
 			modifiers.DisableCrit();
+
+		float multiplier = _pulseDamageActive
+			? Profile.PulseDamageMultiplier
+			: State == SpearProjectileState.Returning
+				? Profile.ReturnDamageMultiplier
+				: Profile.InitialDamageMultiplier;
+		modifiers.SourceDamage *= multiplier;
 	}
 
 	public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
 	{
-		if (!IsFlying || _detonated)
+		if (_pulseDamageActive || _terminal)
 			return;
-		if (!CanCreateProgressionEffects) {
+
+		if (State == SpearProjectileState.Returning) {
 			if (HasOwnerAuthority)
-				Projectile.Kill();
+				Terminate();
 			return;
 		}
 
-		WeaponProfileRegistry.Get(EffectiveKind).Spear.TryApplyImpactDebuff(target);
+		if (State != SpearProjectileState.Flying)
+			return;
+
+		switch (Profile.Behavior) {
+			case SpearAttackBehavior.Contact:
+				ApplyImpactDebuff(target);
+				if (HasOwnerAuthority)
+					Terminate();
+				break;
+			case SpearAttackBehavior.MonarchFinal:
+				if (HasOwnerAuthority)
+					Terminate();
+				break;
+			case SpearAttackBehavior.ExplodeOnContact:
+				ApplyImpactDebuff(target);
+				if (HasOwnerAuthority)
+					Detonate();
+				break;
+			case SpearAttackBehavior.LodgeDebuff:
+				BeginAttached(target, SpearProjectileState.Lodged);
+				break;
+			case SpearAttackBehavior.LodgeExplode:
+				BeginAttached(target, SpearProjectileState.Lodged);
+				break;
+			case SpearAttackBehavior.PierceReturn:
+				BeginPiercing(target);
+				break;
+			case SpearAttackBehavior.Saw:
+				ApplyImpactDebuff(target);
+				BeginAttached(target, SpearProjectileState.Sawing);
+				break;
+		}
+	}
+
+	private void ApplyImpactDebuff(NPC target)
+	{
+		if (Profile.Debuff == SpearImpactDebuff.GoldCurse) {
+			target.GetGlobalNPC<SpearGlobalNPC>().TryApplyGoldCurse(target);
+			return;
+		}
+
+		if (Profile.DebuffType > 0 && Profile.DebuffDurationTicks > 0)
+			target.AddBuff(Profile.DebuffType, Profile.DebuffDurationTicks);
+	}
+
+	private void BeginAttached(NPC target, SpearProjectileState attachedState)
+	{
 		_embedOffset = Projectile.Center - target.Center;
 		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
-		_embeddedTargetType = target.type;
-		CaptureLocalEmbeddedTarget(target);
-		Projectile.ai[1] = target.whoAmI + 1;
-		Projectile.ai[2] = 0f;
+		SetLockedTarget(target);
+		TransitionTo(attachedState, Projectile.Center);
 		Projectile.velocity = Vector2.Zero;
+		Projectile.damage = 0;
+		Projectile.friendly = attachedState == SpearProjectileState.Sawing;
 		Projectile.tileCollide = false;
 		Projectile.netUpdate = true;
-		target.GetGlobalNPC<SpearGlobalNPC>().RegisterEmbedded(Projectile.whoAmI);
-
 		if (HasOwnerAuthority)
 			EnforceEmbeddedCap(target.whoAmI);
 	}
 
+	private void BeginPiercing(NPC target)
+	{
+		_impactDirection = Projectile.velocity.SafeNormalize(_impactDirection);
+		SetLockedTarget(target);
+		TransitionTo(SpearProjectileState.Penetrating, Projectile.Center);
+		Projectile.tileCollide = false;
+		Projectile.netUpdate = true;
+	}
+
+	private void SetLockedTarget(NPC target)
+	{
+		TargetIndex = target.whoAmI;
+		_lockedTargetType = target.type;
+		_localTargetIndex = target.whoAmI;
+		_localTargetSpawnSerial = target.GetGlobalNPC<SpearGlobalNPC>().SpawnSerial;
+	}
+
 	private void EnforceEmbeddedCap(int targetIndex)
 	{
-		List<ProgressionSpearProjectile> embedded = new();
+		List<ProgressionSpearProjectile> attached = new();
 		for (int i = 0; i < Main.maxProjectiles; i++) {
 			Projectile candidate = Main.projectile[i];
 			if (!candidate.active || candidate.owner != Projectile.owner || candidate.type != Type)
 				continue;
-
-			if (candidate.ModProjectile is ProgressionSpearProjectile spear && spear.IsEmbeddedIn(Main.npc[targetIndex]))
-				embedded.Add(spear);
+			if (candidate.ModProjectile is ProgressionSpearProjectile spear && spear.IsAttachedTo(targetIndex))
+				attached.Add(spear);
 		}
 
-		while (embedded.Count > EmbeddedCapPerOwner) {
-			ProgressionSpearProjectile oldest = embedded[0];
-			for (int i = 1; i < embedded.Count; i++) {
-				ProgressionSpearProjectile candidate = embedded[i];
-				if (candidate.Projectile.ai[2] > oldest.Projectile.ai[2] || candidate.Projectile.ai[2] == oldest.Projectile.ai[2] && candidate.Projectile.identity < oldest.Projectile.identity)
+		while (attached.Count > EmbeddedCapPerOwner) {
+			ProgressionSpearProjectile oldest = attached[0];
+			for (int i = 1; i < attached.Count; i++) {
+				ProgressionSpearProjectile candidate = attached[i];
+				if (candidate._stateTimer > oldest._stateTimer || candidate._stateTimer == oldest._stateTimer && candidate.Projectile.identity < oldest.Projectile.identity)
 					oldest = candidate;
 			}
-
-			embedded.Remove(oldest);
-			oldest.Detonate();
+			attached.Remove(oldest);
+			oldest.EndFromCap();
 		}
+	}
+
+	private bool IsAttachedTo(int targetIndex) => !_terminal && TargetIndex == targetIndex && State is SpearProjectileState.Lodged or SpearProjectileState.Sawing;
+
+	private void EndFromCap()
+	{
+		if (Profile.Behavior == SpearAttackBehavior.LodgeExplode)
+			Detonate();
+		else
+			Terminate();
 	}
 
 	public override bool OnTileCollide(Vector2 oldVelocity)
 	{
 		if (HasOwnerAuthority) {
-			if (CanCreateProgressionEffects)
+			if (Profile.TileExplodes)
 				Detonate();
 			else
-				Projectile.Kill();
+				Terminate();
 		}
-		else
-			SuppressVisualsWhileAwaitingRemoval(terminal: true);
+		else {
+			_suppressVisuals = true;
+			_awaitingOwnerRemoval = true;
+		}
 		return false;
 	}
 
@@ -339,267 +605,150 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		return true;
 	}
 
-	internal bool IsEmbeddedIn(NPC npc) => IsEmbedded && EmbeddedTargetIndex == npc.whoAmI && !_detonated && npc.active && npc.life > 0 && (_embeddedTargetType < 0 || npc.type == _embeddedTargetType) && MatchesLocalEmbeddedTarget(npc);
-
-	internal int EmbeddedDotDps => CanCreateProgressionEffects && IsEmbedded && !_detonated ? WeaponProfileRegistry.Get(EffectiveKind).Spear.DotDps : 0;
-
 	private void Detonate()
 	{
-		if (_detonated || !Projectile.active)
+		if (_terminal)
 			return;
 
-		_detonated = true;
-		SuppressVisualsWhileAwaitingRemoval(terminal: true);
-		Projectile.netUpdate = true;
-		if (HasOwnerAuthority)
-			CreateDetonationEffects();
+		if (HasOwnerAuthority && Profile.ExplosionDamageMultiplier > 0f && Profile.ExplosionRadius > 0) {
+			int burstDamage = Math.Max(1, (int)MathF.Round(_launchDamage * Profile.ExplosionDamageMultiplier));
+			SpearBurstProjectile.Spawn(
+				Projectile.GetSource_FromThis(),
+				Projectile.Center,
+				Projectile.owner,
+				burstDamage,
+				Projectile.knockBack,
+				Profile.TextureKind,
+				Profile.ExplosionRadius,
+				IsMonarchVolley);
+		}
+		Terminate();
+	}
 
+	private void Terminate()
+	{
+		if (_terminal)
+			return;
+		_terminal = true;
+		State = SpearProjectileState.Terminal;
+		_suppressVisuals = true;
+		Projectile.alpha = 255;
+		Projectile.netUpdate = true;
 		Projectile.Kill();
 	}
 
-	private void CreateDetonationEffects()
+	private void SuppressAndRemoveOnServer()
 	{
-		if (!CanCreateProgressionEffects)
+		_suppressVisuals = true;
+		Projectile.alpha = 255;
+		if (Main.netMode != NetmodeID.MultiplayerClient)
+			Projectile.Kill();
+	}
+
+	private void TransitionTo(SpearProjectileState state, Vector2 stateOrigin)
+	{
+		State = state;
+		_stateTimer = 0;
+		_stateOrigin = stateOrigin;
+		ResetTrailHistory();
+		Projectile.netUpdate = true;
+	}
+
+	private void SetTarget(int targetIndex)
+	{
+		if (TargetIndex == targetIndex)
 			return;
-
-		WeaponProfile selected = WeaponProfileRegistry.Get(EffectiveKind);
-		SpawnBurst(selected, false);
-		SpawnSelectedSecondary(selected);
-
-		if ((_sourceFlags & SpearSourceFlags.Monarch) != 0) {
-			SpawnBurst(WeaponProfileRegistry.Get(SpearKind.Monarch), true);
-			SpawnIdentityCopies();
-		}
+		TargetIndex = targetIndex;
+		Projectile.netUpdate = true;
 	}
 
-	private void SpawnBurst(WeaponProfile profile, bool appliesFear)
+	private static bool IsValidTarget(int index) => index >= 0 && index < Main.maxNPCs && Main.npc[index].active && Main.npc[index].CanBeChasedBy();
+
+	private bool TryGetLockedTarget(out NPC target)
 	{
-		int damage = Math.Max(1, (int)(_launchDamage * profile.Spear.BurstDamageMultiplier));
-		SpearBurstProjectile.Spawn(Projectile.GetSource_FromThis(), Projectile.Center, Projectile.owner, damage, profile.Spear.BurstKnockback, profile.Kind, profile.Spear.BurstRadius, appliesFear, IsMonarchSource);
-	}
-
-	private void SpawnSelectedSecondary(WeaponProfile profile)
-	{
-		Vector2 direction = _impactDirection.SafeNormalize(Vector2.UnitX);
-		IEntitySource source = Projectile.GetSource_FromThis();
-
-		switch (profile.Spear.SecondaryEffect) {
-			case SpearSecondaryEffect.ShadowThorn:
-				SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction * 14f, Projectile.owner, ScaleDamage(0.35f), 0f, SpearSecondaryKind.ShadowThorn, profile.Kind, fromMonarch: IsMonarchSource);
-				break;
-
-			case SpearSecondaryEffect.BloodNeedles:
-				foreach (float degrees in new[] { -30f, -10f, 10f, 30f })
-					SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction.RotatedBy(MathHelper.ToRadians(degrees)) * 10f, Projectile.owner, ScaleDamage(0.2f), 0f, SpearSecondaryKind.BloodNeedle, profile.Kind, fromMonarch: IsMonarchSource);
-				break;
-
-			case SpearSecondaryEffect.MightArcs:
-				int firstTarget = SpearTargeting.FindClosestVisibleTarget(Projectile.Center, 180f);
-				if (firstTarget >= 0)
-					SpearSecondaryProjectile.SpawnArc(source, Projectile.Center, Projectile.owner, ScaleDamage(0.4f), firstTarget, profile.Kind, IsMonarchSource);
-				int secondTarget = SpearTargeting.FindClosestVisibleTarget(Projectile.Center, 180f, firstTarget);
-				if (secondTarget >= 0)
-					SpearSecondaryProjectile.SpawnArc(source, Projectile.Center, Projectile.owner, ScaleDamage(0.4f), secondTarget, profile.Kind, IsMonarchSource);
-				break;
-
-			case SpearSecondaryEffect.Gemini:
-				SpearSecondaryKind geminiKind = _geminiSpazmatismMode ? SpearSecondaryKind.SpazmatismFlare : SpearSecondaryKind.RetinazerBeam;
-				float geminiSpeed = _geminiSpazmatismMode ? 12f : 24f;
-				SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction * geminiSpeed, Projectile.owner, ScaleDamage(0.5f), 0f, geminiKind, profile.Kind, fromMonarch: IsMonarchSource);
-				break;
-
-			case SpearSecondaryEffect.PrimeBlades:
-				for (int i = 0; i < 4; i++)
-					SpearSecondaryProjectile.Spawn(source, Projectile.Center, (MathHelper.TwoPi * i / 4f).ToRotationVector2() * 10f, Projectile.owner, ScaleDamage(0.35f), 0f, SpearSecondaryKind.PrimeBlade, profile.Kind, fromMonarch: IsMonarchSource);
-				break;
-
-			case SpearSecondaryEffect.SeekingPetals:
-				Span<int> petalTargets = stackalloc int[6];
-				int petalTargetCount = SpearTargeting.FindClosestVisibleTargets(Projectile.Center, 500f, petalTargets);
-				for (int i = 0; i < 6; i++) {
-					float angle = MathHelper.Lerp(MathHelper.ToRadians(-50f), MathHelper.ToRadians(50f), i / 5f);
-					int targetIndex = petalTargetCount > 0 ? petalTargets[i % petalTargetCount] : -1;
-					SpearSecondaryProjectile.Spawn(source, Projectile.Center, direction.RotatedBy(angle) * 8f, Projectile.owner, ScaleDamage(0.25f), 0f, SpearSecondaryKind.SeekingPetal, profile.Kind, targetIndex, i, IsMonarchSource);
-				}
-				break;
-
-			case SpearSecondaryEffect.TempleShards:
-				for (int i = 0; i < 6; i++)
-					SpearSecondaryProjectile.Spawn(source, Projectile.Center, (MathHelper.TwoPi * i / 6f).ToRotationVector2() * 10f, Projectile.owner, ScaleDamage(0.3f), 0f, SpearSecondaryKind.TempleShard, profile.Kind, fromMonarch: IsMonarchSource);
-				break;
-		}
-	}
-
-	private void SpawnIdentityCopies()
-	{
-		IEntitySource source = Projectile.GetSource_FromThis();
-		SpearKind[] cycle = WeaponProfileRegistry.MonarchCycle;
-		for (int i = 0; i < cycle.Length; i++) {
-			Vector2 velocity = (MathHelper.TwoPi * i / cycle.Length).ToRotationVector2() * 12f;
-			SpearSecondaryProjectile.Spawn(source, Projectile.Center, velocity, Projectile.owner, ScaleDamage(0.25f), 0f, SpearSecondaryKind.IdentityCopy, cycle[i]);
-		}
-	}
-
-	private int ScaleDamage(float multiplier) => Math.Max(1, (int)(_launchDamage * multiplier));
-
-	public override bool PreDraw(ref Color lightColor)
-	{
-		if (_detonated || _suppressVisualsWhileAwaitingRemoval)
-			return false;
-
-		WeaponProfile profile = WeaponProfileRegistry.Get(EffectiveKind);
-		Color visualColor = GetVisualColor(profile);
-		Texture2D texture = ModContent.Request<Texture2D>(profile.Spear.TexturePath, AssetRequestMode.ImmediateLoad).Value;
-		Vector2 origin = texture.Size() * 0.5f;
-		SpriteEffects effects = SpriteEffects.None;
-		float opacity = Projectile.Opacity;
-
-		if (IsFlying) {
-			for (int i = Projectile.oldPos.Length - 1; i >= 0; i--) {
-				if (Projectile.oldPos[i] == Vector2.Zero)
-					continue;
-				float fade = (Projectile.oldPos.Length - i) / (float)(Projectile.oldPos.Length + 1) * 0.22f;
-				Vector2 drawPosition = Projectile.oldPos[i] + Projectile.Size * 0.5f - Main.screenPosition;
-				Color trailColor = Color.Lerp(lightColor, visualColor, 0.35f) * (fade * opacity);
-				Main.EntitySpriteDraw(texture, drawPosition, null, trailColor, Projectile.oldRot[i], origin, 1f, effects);
-			}
-		}
-
-		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor * opacity, Projectile.rotation, origin, 1f, effects);
-		if (IsEmbedded) {
-			Color specialColor = Color.Lerp(lightColor, visualColor, 0.35f) * (opacity * 0.75f);
-			DrawEmbeddedSpecial(TextureAssets.MagicPixel.Value, specialColor);
-		}
-		return false;
-	}
-
-	private Color GetVisualColor(WeaponProfile profile)
-	{
-		if (EffectiveKind == SpearKind.Gemini)
-			return _geminiSpazmatismMode ? new Color(80, 235, 105) : new Color(238, 65, 65);
-		return profile.Spear.Color;
-	}
-
-	private Color GetDustColor(Color fallback)
-	{
-		if ((_sourceFlags & SpearSourceFlags.Monarch) == 0 || !Main.rand.NextBool(5))
-			return fallback;
-
-		return Main.hslToRgb((float)(Main.GameUpdateCount % 360) / 360f, 0.85f, 0.6f);
-	}
-
-	private void EmitEmbeddedDust(Color visualColor)
-	{
-		int chance = EffectiveKind == SpearKind.Corruption && Projectile.ai[2] >= EmbeddedLifetimeUpdates - 120 ? 6 : 24;
-		if (!Main.rand.NextBool(chance))
-			return;
-
-		Vector2 velocity = Vector2.Zero;
-		float scale = 0.65f;
-		switch (EffectiveKind) {
-			case SpearKind.Crimson:
-				velocity = Vector2.UnitY.RotatedByRandom(0.45f) * Main.rand.NextFloat(0.4f, 1.2f);
-				scale = 0.6f + 0.2f * MathF.Sin(Projectile.ai[2] * 0.12f);
-				break;
-			case SpearKind.Mightpiercer:
-				velocity = _impactDirection.RotatedBy(MathHelper.PiOver2) * Main.rand.NextFloat(-1.5f, 1.5f);
-				scale = 0.8f;
-				break;
-			case SpearKind.FlowerSpike:
-				velocity = -Vector2.UnitY.RotatedByRandom(0.8f) * Main.rand.NextFloat(0.4f, 1.1f);
-				break;
-			case SpearKind.Tepoztopilli:
-				velocity = Main.rand.NextVector2Circular(1.1f, 1.1f);
-				scale = 0.85f;
-				break;
-		}
-
-		SpearVisualEffects.SpawnTintedDust(Projectile.Center, velocity, 160, GetDustColor(visualColor), scale * 0.85f);
-	}
-
-	private bool TryGetEmbeddedTarget(out NPC target)
-	{
-		int targetIndex = EmbeddedTargetIndex;
-		if (targetIndex < 0 || targetIndex >= Main.maxNPCs) {
+		if (!IsValidTarget(TargetIndex)) {
 			target = default;
 			return false;
 		}
 
-		target = Main.npc[targetIndex];
-		return target.active && target.life > 0 && (_embeddedTargetType < 0 || target.type == _embeddedTargetType) && MatchesLocalEmbeddedTarget(target);
-	}
+		target = Main.npc[TargetIndex];
+		if (_lockedTargetType >= 0 && target.type != _lockedTargetType)
+			return false;
 
-	private bool MatchesLocalEmbeddedTarget(NPC target)
-	{
 		SpearGlobalNPC targetState = target.GetGlobalNPC<SpearGlobalNPC>();
-		if (_localEmbeddedTargetIndex != target.whoAmI) {
-			_localEmbeddedTargetIndex = target.whoAmI;
-			_localEmbeddedTargetSpawnSerial = targetState.SpawnSerial;
+		if (_localTargetIndex != target.whoAmI) {
+			_localTargetIndex = target.whoAmI;
+			_localTargetSpawnSerial = targetState.SpawnSerial;
+		}
+		return _localTargetSpawnSerial == targetState.SpawnSerial;
+	}
+
+	private void ResetTrailHistory()
+	{
+		if (Projectile.oldPos is null)
+			return;
+		for (int i = 0; i < Projectile.oldPos.Length; i++) {
+			Projectile.oldPos[i] = Projectile.position;
+			Projectile.oldRot[i] = Projectile.rotation;
+		}
+	}
+
+	private void EmitFlightVisuals()
+	{
+		if (!SpearVisualEffects.IsPrimaryUpdate(Projectile) || _suppressVisuals)
+			return;
+		WeaponProfile weapon = WeaponProfileRegistry.Get(Profile.TextureKind);
+		SpearVisualEffects.AddLight(Projectile.Center, GetVisualColor(), weapon.LightStrength, IsMonarchVolley || AttackKind == SpearAttackKind.MonarchFinal ? SpearLightRole.MonarchMainFlight : SpearLightRole.MainFlight);
+		if (!Main.dedServ && Main.rand.NextBool(IsMonarchVolley ? 12 : 8))
+			SpearVisualEffects.SpawnTintedDust(Projectile.Center, -Projectile.velocity * 0.04f, 140, GetVisualColor(), 0.65f);
+	}
+
+	private void EmitAttachedVisuals()
+	{
+		if (!SpearVisualEffects.IsPrimaryUpdate(Projectile) || _suppressVisuals)
+			return;
+		WeaponProfile weapon = WeaponProfileRegistry.Get(Profile.TextureKind);
+		SpearVisualEffects.AddLight(Projectile.Center, GetVisualColor(), weapon.LightStrength, IsMonarchVolley ? SpearLightRole.MonarchEmbedded : SpearLightRole.Embedded);
+		if (!Main.dedServ && Main.rand.NextBool(18))
+			SpearVisualEffects.SpawnTintedDust(Projectile.Center, Vector2.Zero, 160, GetVisualColor(), 0.55f);
+	}
+
+	private Color GetVisualColor() => AttackKind switch {
+		SpearAttackKind.GeminiInferno or SpearAttackKind.FrightInferno => new Color(80, 235, 105),
+		SpearAttackKind.GeminiDamage => new Color(238, 65, 65),
+		SpearAttackKind.FlowerThorn => new Color(106, 132, 62),
+		_ => WeaponProfileRegistry.Get(Profile.TextureKind).Color
+	};
+
+	public override bool PreDraw(ref Color lightColor)
+	{
+		if (_terminal || _suppressVisuals)
+			return false;
+
+		Texture2D texture = ModContent.Request<Texture2D>(WeaponProfileRegistry.TexturePath(Profile.TextureKind), AssetRequestMode.ImmediateLoad).Value;
+		Vector2 origin = texture.Size() * 0.5f;
+		float scale = AttackKind == SpearAttackKind.MonarchFinal ? 1.65f : 1f;
+		Vector2 previousWorld = Projectile.Center;
+
+		if (State is SpearProjectileState.Flying or SpearProjectileState.Returning) {
+			for (int i = 0; i < Projectile.oldPos.Length; i++) {
+				Vector2 stored = Projectile.oldPos[i];
+				if (stored == Vector2.Zero || !float.IsFinite(stored.X) || !float.IsFinite(stored.Y))
+					continue;
+				Vector2 world = stored + Projectile.Size * 0.5f;
+				if (Vector2.DistanceSquared(previousWorld, world) > MaximumTrailGap * MaximumTrailGap)
+					continue;
+
+				float fade = (Projectile.oldPos.Length - i) / (float)Projectile.oldPos.Length * 0.25f;
+				Color trailColor = AttackKind == SpearAttackKind.MonarchFinal
+					? Main.hslToRgb(((float)Main.GameUpdateCount * 0.01f + i / (float)Projectile.oldPos.Length) % 1f, 0.85f, 0.62f) * fade
+					: Color.Lerp(lightColor, GetVisualColor(), 0.45f) * fade;
+				Main.EntitySpriteDraw(texture, world - Main.screenPosition, null, trailColor, Projectile.oldRot[i], origin, scale, SpriteEffects.None);
+				previousWorld = world;
+			}
 		}
 
-		return _localEmbeddedTargetSpawnSerial == targetState.SpawnSerial;
-	}
-
-	private void CaptureLocalEmbeddedTarget(NPC target)
-	{
-		_localEmbeddedTargetIndex = target.whoAmI;
-		_localEmbeddedTargetSpawnSerial = target.GetGlobalNPC<SpearGlobalNPC>().SpawnSerial;
-	}
-
-	private void SuppressVisualsWhileAwaitingRemoval(bool terminal = false)
-	{
-		_suppressVisualsWhileAwaitingRemoval = true;
-		_terminalVisualSuppression |= terminal;
-		Projectile.alpha = 255;
-	}
-
-	private void RestoreTransientVisuals()
-	{
-		if (!_terminalVisualSuppression && !_detonated)
-			_suppressVisualsWhileAwaitingRemoval = false;
-	}
-
-	private void DrawEmbeddedSpecial(Texture2D pixel, Color color)
-	{
-		Vector2 center = Projectile.Center - Main.screenPosition;
-		float progress = MathHelper.Clamp(Projectile.ai[2] / EmbeddedLifetimeUpdates, 0f, 1f);
-		float pulse = 0.75f + 0.25f * MathF.Sin((float)Main.GameUpdateCount * 0.12f);
-
-		switch (EffectiveKind) {
-			case SpearKind.Mightpiercer:
-				float travel = ((float)Main.GameUpdateCount * 0.08f % 1f - 0.5f) * 28f;
-				Vector2 spark = center + _impactDirection * travel;
-				Main.EntitySpriteDraw(pixel, spark, null, color * pulse, _impactDirection.ToRotation(), new Vector2(0.5f), new Vector2(5f, 2f), SpriteEffects.None);
-				break;
-
-			case SpearKind.Gemini:
-				Main.EntitySpriteDraw(pixel, center, null, color * pulse, 0f, new Vector2(0.5f), new Vector2(7f), SpriteEffects.None);
-				break;
-
-			case SpearKind.Frightsteel:
-				for (int i = 0; i < 4; i++) {
-					float angle = (float)Main.GameUpdateCount * 0.06f + MathHelper.TwoPi * i / 4f;
-					Vector2 blade = center + angle.ToRotationVector2() * 11f;
-					Main.EntitySpriteDraw(pixel, blade, null, color * 0.75f, angle + MathHelper.PiOver2, new Vector2(0.5f), new Vector2(7f, 2f), SpriteEffects.None);
-				}
-				break;
-
-			case SpearKind.FlowerSpike:
-				for (int i = 0; i < 6; i++) {
-					float angle = MathHelper.TwoPi * i / 6f;
-					Vector2 petal = center + angle.ToRotationVector2() * MathHelper.Lerp(2f, 9f, progress);
-					Main.EntitySpriteDraw(pixel, petal, null, (i % 2 == 0 ? color : new Color(90, 220, 80)) * 0.75f, angle, new Vector2(0.5f), new Vector2(6f, 3f), SpriteEffects.None);
-				}
-				break;
-
-			case SpearKind.Tepoztopilli:
-				Main.EntitySpriteDraw(pixel, center, null, new Color(255, 172, 35) * pulse, 0f, new Vector2(0.5f), new Vector2(6f), SpriteEffects.None);
-				for (int i = 0; i < 4; i++) {
-					float angle = MathHelper.TwoPi * i / 4f;
-					Vector2 plate = center + angle.ToRotationVector2() * MathHelper.Lerp(3f, 10f, progress);
-					Main.EntitySpriteDraw(pixel, plate, null, new Color(173, 114, 57) * 0.85f, angle, new Vector2(0.5f), new Vector2(7f, 3f), SpriteEffects.None);
-				}
-				break;
-		}
+		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor * Projectile.Opacity, Projectile.rotation, origin, scale, SpriteEffects.None);
+		return false;
 	}
 }

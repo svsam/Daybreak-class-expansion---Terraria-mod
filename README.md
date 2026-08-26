@@ -1,6 +1,6 @@
 # Spears
 
-Spears is an Terraria content mod that adds a ten-weapon progression of thrown, Daybreak-style spears. Some spears can lodge in an enemy, deal fixed damage over time, and detonate when it expires. Later weapons add themed bursts, debuffs, and secondary projectiles.
+Spears is a Terraria content mod that adds a ten-weapon progression of thrown, Daybreak-style spears. Every tier has a distinct job: money utility, lodged debuffs, contact explosions, target-return attacks, paired mechanical weapons, crowd control, and a post-Moon-Lord arsenal combo.
 
 The current source targets Terraria 1.4.4.9 through tModLoader 2026.06, .NET 8, and C# 12. Multiplayer-safe code paths are implemented for single-player, host-and-play, and dedicated servers; the full gameplay acceptance matrix must pass before a public release is tagged.
 
@@ -8,16 +8,16 @@ The current source targets Terraria 1.4.4.9 through tModLoader 2026.06, .NET 8, 
 
 | Stage | Weapon | Theme |
 | --- | --- | --- |
-| Pre-boss | Gold Spear | Midas-inflicting golden javelin |
-| Post-Eater of Worlds | Night's Spine | Corruption rot, seeking shadow thorn, and stun |
-| Post-Brain of Cthulhu | Bloodspine | Crimson wounds and blood needles |
-| Post-Wall of Flesh | Hellrend | A guaranteed drop that throws a three-spear spread |
-| Post-Destroyer | Mightpiercer | Electrical arcs |
-| Post-Twins | Gemini Gaze | Alternating Retinazer and Spazmatism effects |
-| Post-Skeletron Prime | Frightsteel | Rotating Prime blades |
-| Post-Plantera | FlowerSpike | Venom and seeking petals |
-| Post-Golem | Tepoztopilli | Armor piercing and solar temple shards |
-| Post-Moon Lord | Monarch's Spear | Cycles the complete spear lineage |
+| Pre-boss | Gold Spear | Tags ordinary enemies for a weighted bonus coin drop |
+| Post-Eater of Worlds | Post-Eater of Worlds Spear | Lodges and maintains Shadowflame |
+| Post-Brain of Cthulhu | Bloodspine | Lodges and maintains Ichor |
+| Post-Wall of Flesh | Hellrend | Three contact-exploding spears |
+| Post-Destroyer | Mightpiercer | Homes through a target, overshoots, and strikes again |
+| Post-Twins | Post-Twins Spear | Paired Cursed Inferno and delayed-explosion spears |
+| Post-Skeletron Prime | Post-Skeletron Prime Spear | Returning spear, inferno spear, and lodged saw |
+| Post-Plantera | FlowerSpike | Venom primary fire and Poisoned/Thorned alternate fire |
+| Post-Golem | Tepoztopilli | Immediate fiery contact explosion |
+| Post-Moon Lord | Monarch's Spear | Five full-lineage volleys followed by a homing final strike |
 
 The Eater of Worlds and Brain of Cthulhu paths are separate. Upgrade recipes consume their listed predecessor, and every boss-associated recipe also checks that the relevant boss has been defeated.
 
@@ -43,7 +43,7 @@ Procedural trails and secondary effects intentionally have no committed raster a
 
 ## Development and design
 
-`DESIGN_MANIFEST.yaml` is the approved design reference. Gameplay values are compiled into the mod; the YAML file is not loaded at runtime and is excluded from the distributed `.tmod` package.
+`DESIGN_MANIFEST.yaml` version 4 is the approved design reference. Gameplay values are compiled into the mod; the YAML file is not loaded at runtime and is excluded from the distributed `.tmod` package. The mod deliberately remains on Terraria 1.4.4.9, so FlowerSpike uses Venom instead of the later Spored debuff.
 
 A quick compile check can be run with:
 

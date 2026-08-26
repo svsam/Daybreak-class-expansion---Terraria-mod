@@ -1,8 +1,7 @@
 namespace Spears.Content.Common;
 
 /// <summary>
-/// Stable identities used by the shared spear projectile and by concrete spear items.
-/// The final two values are Monarch-only identities and do not have mod item counterparts.
+/// Stable item identities used by concrete spear items and projectile visuals.
 /// </summary>
 internal enum SpearKind : byte
 {
@@ -15,7 +14,5 @@ internal enum SpearKind : byte
 	Frightsteel,
 	FlowerSpike,
 	Tepoztopilli,
-	Monarch,
-	VanillaSpear,
-	Daybreak
+	Monarch
 }

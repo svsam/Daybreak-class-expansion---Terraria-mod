@@ -15,11 +15,7 @@ internal enum SpearLightRole : byte
 	Burst,
 	MonarchBurst,
 	Secondary,
-	MonarchSecondary,
-	MightArc,
-	OrbitalBolt,
-	IdentityCopy,
-	Orbital
+	MonarchSecondary
 }
 
 /// <summary>
@@ -48,10 +44,6 @@ internal static class SpearVisualEffects
 			SpearLightRole.MonarchBurst => (0.12f, 0.08f),
 			SpearLightRole.Secondary => (0.25f, 0.14f),
 			SpearLightRole.MonarchSecondary => (0.12f, 0.07f),
-			SpearLightRole.MightArc => (1f, 0.06f),
-			SpearLightRole.OrbitalBolt => (1f, 0.05f),
-			SpearLightRole.IdentityCopy => (0f, 0f),
-			SpearLightRole.Orbital => (0.1f, 0.06f),
 			_ => (0f, 0f)
 		};
 

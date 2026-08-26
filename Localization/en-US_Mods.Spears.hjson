@@ -5,17 +5,17 @@ Items: {
 		DisplayName: Gold Spear
 		Tooltip:
 			'''
-			Trusty spear smeared with gold
-			Lodges in enemies and may inflict Midas
+			Tags ordinary enemies with Gold Curse
+			Cursed enemies drop 25% to 100% bonus coins
 			'''
 	}
 
 	NightsSpine: {
-		DisplayName: Night's Spine
+		DisplayName: Post-Eater of Worlds Spear
 		Tooltip:
 			'''
-			The Corruption remembers every wound
-			Detonations release a seeking shadow thorn that can stun ordinary enemies
+			Lodges in enemies for 4 seconds
+			Maintains Shadowflame while lodged and briefly afterward
 			'''
 	}
 
@@ -23,8 +23,8 @@ Items: {
 		DisplayName: Bloodspine
 		Tooltip:
 			'''
-			It drinks before it blooms
-			Detonations scatter a fan of blood needles
+			Lodges in enemies for 4 seconds
+			Maintains Ichor while lodged and briefly afterward
 			'''
 	}
 
@@ -32,8 +32,8 @@ Items: {
 		DisplayName: Hellrend
 		Tooltip:
 			'''
-			Three flames tear open the horizon
-			Throws a central spear with two wide-arcing companions
+			Throws three spears that explode on contact
+			Enemy hits inflict Hellfire
 			'''
 	}
 
@@ -41,26 +41,24 @@ Items: {
 		DisplayName: Mightpiercer
 		Tooltip:
 			'''
-			Built from the Destroyer's broken spine
-			Detonations arc electricity to nearby enemies
+			Homes through an enemy, overshoots it, then strikes again
 			'''
 	}
 
 	GeminiGaze: {
-		DisplayName: Gemini Gaze
+		DisplayName: Post-Twins Spear
 		Tooltip:
 			'''
-			Two eyes. One point
-			Alternates between Retinazer beams and Spazmatism flames
+			Launches paired homing spears
+			One inflicts Cursed Inferno; the other lodges and explodes
 			'''
 	}
 
 	Frightsteel: {
-		DisplayName: Frightsteel
+		DisplayName: Post-Skeletron Prime Spear
 		Tooltip:
 			'''
-			The final machine learned fear
-			Detonations launch four rotating Prime blades
+			Launches a returning spear, an inferno spear, and a bleeding saw
 			'''
 	}
 
@@ -68,8 +66,8 @@ Items: {
 		DisplayName: FlowerSpike
 		Tooltip:
 			'''
-			Every wound takes root
-			Poisons embedded enemies and blooms into seeking petals
+			Primary fire lodges and inflicts Venom
+			Right-click poisons and briefly thorns eligible enemies in place
 			'''
 	}
 
@@ -77,8 +75,8 @@ Items: {
 		DisplayName: Tepoztopilli
 		Tooltip:
 			'''
-			The temple sun burns within
-			Pierces armor and bursts into solar temple shards
+			Explodes immediately on contact
+			Enemy hits inflict On Fire!
 			'''
 	}
 
@@ -86,21 +84,21 @@ Items: {
 		DisplayName: Monarch's Spear
 		Tooltip:
 			'''
-			Every spear in its lineage answers the call
-			Cycles inherited spear effects and commands three orbiting weapons
+			Five uses unleash the complete spear lineage
+			The sixth launches the Monarch's homing final strike
 			'''
 	}
 }
 
 Buffs: {
-	Stunned: {
-		DisplayName: Stunned
-		Description: Unable to move or act
+	GoldCurseDebuff: {
+		DisplayName: Gold Curse
+		Description: Drops bonus coins on death
 	}
 
-	TheKingsOfKings: {
-		DisplayName: The Kings of Kings
-		Description: Compelled to flee from the nearest player
+	ThornedDebuff: {
+		DisplayName: Thorned
+		Description: Unable to move or attack
 	}
 }
 
@@ -118,8 +116,6 @@ Conditions: {
 RecipeGroups.EvilSpear: Any evil-biome spear
 
 Projectiles: {
-	MonarchOrbitalProjectile.DisplayName: Monarch Orbital Projectile
 	ProgressionSpearProjectile.DisplayName: Progression Spear Projectile
 	SpearBurstProjectile.DisplayName: Spear Burst Projectile
-	SpearSecondaryProjectile.DisplayName: Spear Secondary Projectile
 }

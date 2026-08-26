@@ -1,9 +1,8 @@
 using System;
+using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Spears.Content.Buffs;
 using Spears.Content.Common;
-using Spears.Content.NPCs;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.GameContent;
@@ -15,11 +14,10 @@ namespace Spears.Content.Projectiles;
 public sealed class SpearBurstProjectile : ModProjectile
 {
 	private bool _fromMonarch;
-	private bool _suppressVisualsWhileAwaitingRemoval;
+	private bool _suppressVisuals;
 
-	private SpearKind Kind => (SpearKind)(int)Projectile.ai[0];
+	private SpearKind VisualKind => (SpearKind)(int)Projectile.ai[0];
 	private float Radius => Math.Max(1f, Projectile.ai[1]);
-	private bool AppliesFear => Projectile.ai[2] > 0f;
 
 	public override string Texture => "Terraria/Images/Projectile_0";
 
@@ -36,12 +34,11 @@ public sealed class SpearBurstProjectile : ModProjectile
 		Projectile.timeLeft = 3;
 		Projectile.usesLocalNPCImmunity = true;
 		Projectile.localNPCHitCooldown = -1;
-		Projectile.hide = false;
 	}
 
-	internal static int Spawn(IEntitySource source, Vector2 center, int owner, int damage, float knockback, SpearKind kind, int radius, bool appliesFear, bool fromMonarch = false)
+	internal static int Spawn(IEntitySource source, Vector2 center, int owner, int damage, float knockback, SpearKind visualKind, int radius, bool fromMonarch)
 	{
-		int index = Projectile.NewProjectile(source, center, Vector2.Zero, ModContent.ProjectileType<SpearBurstProjectile>(), damage, knockback, owner, (float)kind, radius, appliesFear ? 1f : 0f);
+		int index = Projectile.NewProjectile(source, center, Vector2.Zero, ModContent.ProjectileType<SpearBurstProjectile>(), damage, knockback, owner, (float)visualKind, radius);
 		if (index >= 0 && index < Main.maxProjectiles) {
 			Main.projectile[index].CritChance = 0;
 			if (Main.projectile[index].ModProjectile is SpearBurstProjectile burst)
@@ -51,43 +48,26 @@ public sealed class SpearBurstProjectile : ModProjectile
 		return index;
 	}
 
-	public override void SendExtraAI(System.IO.BinaryWriter writer)
-	{
-		writer.Write(_fromMonarch);
-	}
-
-	public override void ReceiveExtraAI(System.IO.BinaryReader reader)
-	{
-		_fromMonarch = reader.ReadBoolean();
-	}
-
+	public override void SendExtraAI(BinaryWriter writer) => writer.Write(_fromMonarch);
+	public override void ReceiveExtraAI(BinaryReader reader) => _fromMonarch = reader.ReadBoolean();
 	public override bool ShouldUpdatePosition() => false;
 
 	public override void AI()
 	{
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers || !Main.player[Projectile.owner].active) {
-			_suppressVisualsWhileAwaitingRemoval = true;
+			_suppressVisuals = true;
 			if (Main.netMode != NetmodeID.MultiplayerClient)
 				Projectile.Kill();
 			return;
 		}
-		_suppressVisualsWhileAwaitingRemoval = false;
 
-		WeaponProfile profile = WeaponProfileRegistry.Get(Kind);
+		WeaponProfile weapon = WeaponProfileRegistry.Get(VisualKind);
 		if (SpearVisualEffects.IsPrimaryUpdate(Projectile))
-			SpearVisualEffects.AddLight(Projectile.Center, profile.Spear.Color, profile.Spear.LightStrength, _fromMonarch ? SpearLightRole.MonarchBurst : SpearLightRole.Burst);
-		if (!Main.dedServ && SpearVisualEffects.IsPrimaryUpdate(Projectile) && Projectile.timeLeft == 3) {
-			int dustCount = _fromMonarch ? 6 : 10;
-			for (int i = 0; i < dustCount; i++) {
-				Vector2 velocity = (MathHelper.TwoPi * i / dustCount).ToRotationVector2() * Main.rand.NextFloat(1.25f, 3.25f);
-				SpearVisualEffects.SpawnTintedDust(Projectile.Center + velocity.SafeNormalize(Vector2.UnitX) * Radius * 0.4f, velocity, 140, profile.Spear.Color, 0.75f);
-			}
-		}
+			SpearVisualEffects.AddLight(Projectile.Center, weapon.Color, weapon.LightStrength, _fromMonarch ? SpearLightRole.MonarchBurst : SpearLightRole.Burst);
 	}
 
+	public override bool? CanDamage() => _suppressVisuals ? false : null;
 	public override bool? CanHitNPC(NPC target) => target.active && !target.friendly && !target.dontTakeDamage ? null : false;
-
-	public override bool? CanDamage() => _suppressVisualsWhileAwaitingRemoval ? false : null;
 
 	public override bool? Colliding(Rectangle projHitbox, Rectangle targetHitbox)
 	{
@@ -95,29 +75,16 @@ public sealed class SpearBurstProjectile : ModProjectile
 		return Vector2.DistanceSquared(Projectile.Center, nearest) <= Radius * Radius;
 	}
 
-	public override void ModifyHitNPC(NPC target, ref NPC.HitModifiers modifiers)
-	{
-		modifiers.DisableCrit();
-	}
-
-	public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
-	{
-		WeaponProfileRegistry.Get(Kind).Spear.TryApplyImpactDebuff(target);
-		if (AppliesFear && SpearGlobalNPC.CanCrowdControl(target))
-			target.AddBuff(ModContent.BuffType<TheKingsOfKings>(), 300);
-	}
+	public override void ModifyHitNPC(NPC target, ref NPC.HitModifiers modifiers) => modifiers.DisableCrit();
 
 	public override bool PreDraw(ref Color lightColor)
 	{
-		if (_suppressVisualsWhileAwaitingRemoval)
+		if (_suppressVisuals)
 			return false;
-
 		Texture2D pixel = TextureAssets.MagicPixel.Value;
-		Color profileColor = WeaponProfileRegistry.Get(Kind).Spear.Color;
-		Color color = Color.Lerp(lightColor, profileColor, 0.4f) * (Projectile.timeLeft / 3f) * 0.45f;
-		const int segmentCount = 24;
-		for (int i = 0; i < segmentCount; i++) {
-			float angle = MathHelper.TwoPi * i / segmentCount;
+		Color color = Color.Lerp(lightColor, WeaponProfileRegistry.Get(VisualKind).Color, 0.4f) * (Projectile.timeLeft / 3f) * 0.45f;
+		for (int i = 0; i < 24; i++) {
+			float angle = MathHelper.TwoPi * i / 24f;
 			Vector2 point = Projectile.Center + angle.ToRotationVector2() * Radius - Main.screenPosition;
 			Main.EntitySpriteDraw(pixel, point, null, color, angle + MathHelper.PiOver2, new Vector2(0.5f), new Vector2(2f, 5f), SpriteEffects.None);
 		}

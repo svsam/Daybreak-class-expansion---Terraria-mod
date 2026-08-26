@@ -29,6 +29,19 @@ EXPECTED_ITEMS = (
     "MonarchsSpear",
 )
 
+EXPECTED_BALANCE = {
+    "GoldSpear": (18, 28, 5.0, 0),
+    "NightsSpine": (36, 25, 5.5, 0),
+    "BloodSpine": (36, 25, 5.5, 0),
+    "Hellrend": (60, 24, 6.0, 0),
+    "Mightpiercer": (88, 22, 7.0, 8),
+    "GeminiGaze": (108, 21, 7.5, 8),
+    "Frightsteel": (132, 20, 8.0, 12),
+    "FlowerSpike": (150, 19, 8.5, 10),
+    "Tepoztopilli": (170, 18, 9.0, 20),
+    "MonarchsSpear": (500, 16, 10.0, 30),
+}
+
 
 class TmodFormatError(ValueError):
     """Raised when a .tmod file cannot be parsed safely."""
@@ -143,6 +156,8 @@ def validate_manifest(failures: list[str]) -> None:
         fail("DESIGN_MANIFEST.yaml must contain a weapons list", failures)
         return
 
+    if manifest.get("manifest_version") != 4:
+        fail("DESIGN_MANIFEST.yaml must use mechanics manifest version 4", failures)
     if manifest.get("status") != "approved_for_implementation":
         fail("DESIGN_MANIFEST.yaml is not approved for implementation", failures)
     if manifest.get("illustrated_weapon_count") != len(EXPECTED_ITEMS):
@@ -160,6 +175,19 @@ def validate_manifest(failures: list[str]) -> None:
         item_png = weapon.get("art", {}).get("item_png")
         if not isinstance(item_png, str) or not (ROOT / item_png).is_file():
             fail(f"{name} has a missing item_png: {item_png!r}", failures)
+
+        actual_balance = (
+            balance.get("base_damage"),
+            balance.get("use_time_ticks"),
+            balance.get("shoot_speed_raw"),
+            balance.get("armor_penetration"),
+        )
+        expected_balance = EXPECTED_BALANCE.get(name)
+        if actual_balance != expected_balance:
+            fail(
+                f"{name} balance differs: expected {expected_balance}, got {actual_balance}",
+                failures,
+            )
 
     def walk(value: object, location: str) -> None:
         if isinstance(value, dict):
@@ -311,6 +339,16 @@ def validate_release_files(failures: list[str]) -> None:
     for relative in ("Content/Items/Spear1.cs", "Content/Items/Spear1.png"):
         if (ROOT / relative).exists():
             fail(f"template content still exists: {relative}", failures)
+
+    obsolete_content = (
+        "Content/Buffs/Stunned.cs",
+        "Content/Buffs/TheKingsOfKings.cs",
+        "Content/Projectiles/MonarchOrbitalProjectile.cs",
+        "Content/Projectiles/SpearSecondaryProjectile.cs",
+    )
+    for relative in obsolete_content:
+        if (ROOT / relative).exists():
+            fail(f"obsolete mechanics file still exists: {relative}", failures)
 
     build_text = (ROOT / "build.txt").read_text(encoding="utf-8")
     for required_text in (
