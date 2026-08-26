@@ -11,14 +11,21 @@ namespace Spears.Content.NPCs;
 
 public sealed class SpearGlobalNPC : GlobalNPC
 {
+	private static int _nextSpawnSerial;
+
 	public override bool InstancePerEntity => true;
 
 	internal bool Stunned;
 	internal bool KingsOfKings;
+	internal int SpawnSerial { get; private set; }
 	private readonly HashSet<int> _embeddedProjectileIndices = new();
 
 	public override void OnSpawn(NPC npc, IEntitySource source)
 	{
+		_nextSpawnSerial = unchecked(_nextSpawnSerial + 1);
+		if (_nextSpawnSerial == 0)
+			_nextSpawnSerial = 1;
+		SpawnSerial = _nextSpawnSerial;
 		_embeddedProjectileIndices.Clear();
 	}
 
@@ -85,7 +92,7 @@ public sealed class SpearGlobalNPC : GlobalNPC
 		List<int> staleIndices = null;
 		foreach (int projectileIndex in _embeddedProjectileIndices) {
 			Projectile projectile = Main.projectile[projectileIndex];
-			if (projectile.active && projectile.type == spearType && projectile.ModProjectile is ProgressionSpearProjectile spear && spear.IsEmbeddedIn(npc.whoAmI)) {
+			if (projectile.active && projectile.type == spearType && projectile.ModProjectile is ProgressionSpearProjectile spear && spear.IsEmbeddedIn(npc)) {
 				totalDps += spear.EmbeddedDotDps;
 				continue;
 			}

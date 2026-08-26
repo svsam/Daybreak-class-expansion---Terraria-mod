@@ -11,6 +11,8 @@ namespace Spears.Content.Projectiles;
 
 public sealed class MonarchOrbitalProjectile : ModProjectile
 {
+	private bool _suppressVisualsWhileAwaitingRemoval;
+
 	private int Slot => (int)Projectile.ai[0];
 	private SpearKind Identity => (SpearKind)(int)Projectile.ai[1];
 
@@ -36,6 +38,7 @@ public sealed class MonarchOrbitalProjectile : ModProjectile
 	public override void AI()
 	{
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers) {
+			_suppressVisualsWhileAwaitingRemoval = true;
 			if (Main.netMode != NetmodeID.MultiplayerClient)
 				Projectile.Kill();
 			return;
@@ -43,24 +46,27 @@ public sealed class MonarchOrbitalProjectile : ModProjectile
 
 		Player owner = Main.player[Projectile.owner];
 		if (!owner.active || owner.dead || owner.HeldItem?.ModItem is not ProgressionSpearItem spearItem || spearItem.SpearKind != SpearKind.Monarch) {
+			_suppressVisualsWhileAwaitingRemoval = true;
 			if (Main.netMode != NetmodeID.MultiplayerClient || Projectile.owner == Main.myPlayer)
 				Projectile.Kill();
-			else
-				Projectile.timeLeft = 2;
 			return;
 		}
 
+		_suppressVisualsWhileAwaitingRemoval = false;
 		Projectile.timeLeft = 2;
 		float angle = (float)(Main.GameUpdateCount * 0.025f) + MathHelper.TwoPi * Slot / 3f;
 		Vector2 offset = new(MathF.Cos(angle) * 48f, -42f + MathF.Sin(angle) * 10f);
 		Projectile.Center = owner.MountedCenter + offset;
 		Projectile.rotation = angle + MathHelper.PiOver4;
-		if (!Main.dedServ)
-			Lighting.AddLight(Projectile.Center, WeaponProfileRegistry.Get(Identity).Spear.Color.ToVector3() * WeaponProfileRegistry.Get(SpearKind.Monarch).Spear.LightStrength);
+		SpearProfile profile = WeaponProfileRegistry.Get(Identity).Spear;
+		SpearVisualEffects.AddLight(Projectile.Center, profile.Color, profile.LightStrength, SpearLightRole.Orbital);
 	}
 
 	public override bool PreDraw(ref Color lightColor)
 	{
+		if (_suppressVisualsWhileAwaitingRemoval)
+			return false;
+
 		Texture2D texture = ModContent.Request<Texture2D>(WeaponProfileRegistry.TexturePath(Identity), AssetRequestMode.ImmediateLoad).Value;
 		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor, Projectile.rotation, texture.Size() * 0.5f, 0.65f, SpriteEffects.None);
 		return false;

@@ -31,6 +31,10 @@ global:
   item_set: ItemID.Sets.Spears
   use_animation_policy: "useAnimation always equals useTime; one throw or volley per use."
   melee_speed_policy: "Melee-speed bonuses affect projectile velocity, not firing cadence."
+  visual_budget:
+    emission_frequency: "At most once per game tick, even when a projectile uses extraUpdates."
+    lighting: "Role-scaled and capped for flight, embedding, bursts, children, copies, and orbitals; Monarch children use the lower Monarch caps."
+    particles: "Color-tinted but non-emissive, so particles cannot keep the world lit after their projectile ends."
 
 main_projectile:
   implementation: "One shared dynamic ModProjectile drawing the selected weapon's item icon."
@@ -777,7 +781,7 @@ weapons:
         damage_multiplier: 0.25
         source_flags: monarch_copy
     visuals:
-      light: { color: selected_identity_or_full_spectrum, strength: 1.0 }
+      light: { color: selected_identity_or_full_spectrum, strength: 0.35 }
       dust: "Selected identity particles with sparse rainbow refractions."
       runtime_debuff_icon: Confused
     art:

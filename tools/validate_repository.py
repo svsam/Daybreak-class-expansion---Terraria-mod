@@ -327,6 +327,21 @@ def validate_release_files(failures: list[str]) -> None:
             fail(f"build.txt is missing {required_text!r}", failures)
 
 
+def validate_visual_effect_contract(failures: list[str]) -> None:
+    helper_path = ROOT / "Content" / "Common" / "SpearVisualEffects.cs"
+    helper_text = helper_path.read_text(encoding="utf-8")
+    if "projectile.numUpdates == -1" not in helper_text:
+        fail("visual effects must be emitted only on the final projectile update", failures)
+
+    for path in (ROOT / "Content").rglob("*.cs"):
+        text = path.read_text(encoding="utf-8")
+        relative = path.relative_to(ROOT).as_posix()
+        if path != helper_path and "Lighting.AddLight(" in text:
+            fail(f"{relative} bypasses the shared spear light budget", failures)
+        if "DustID.TintableDustLighted" in text:
+            fail(f"{relative} uses persistent light-emitting dust", failures)
+
+
 def validate_history(failures: list[str]) -> None:
     history = git_output(
         "log", "--all", "--format=fuller", "-p", "--", ".", ":!*.png"
@@ -385,6 +400,7 @@ def main() -> int:
     validate_icons(failures)
     validate_tracked_text(failures)
     validate_release_files(failures)
+    validate_visual_effect_contract(failures)
     if args.tmod:
         package_path = args.tmod if args.tmod.is_absolute() else ROOT / args.tmod
         validate_tmod(package_path.resolve(), failures)

@@ -16,6 +16,8 @@ namespace Spears.Content.Projectiles;
 public sealed class SpearSecondaryProjectile : ModProjectile
 {
 	private bool _initialized;
+	private bool _suppressVisualsWhileAwaitingRemoval;
+	private bool _fromMonarch;
 	private int _preferredTargetOrdinal;
 	private int _nextTargetSearchUpdate;
 
@@ -55,37 +57,44 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		SpearSecondaryKind secondaryKind,
 		SpearKind identity,
 		int targetIndex = -1,
-		int preferredTarget = 0)
+		int preferredTarget = 0,
+		bool fromMonarch = false)
 	{
 		int index = Projectile.NewProjectile(source, position, velocity, ModContent.ProjectileType<SpearSecondaryProjectile>(), damage, knockback, owner, (float)secondaryKind, targetIndex + 1, (float)identity);
 		if (index >= 0 && index < Main.maxProjectiles && Main.projectile[index].ModProjectile is SpearSecondaryProjectile secondary) {
 			secondary._preferredTargetOrdinal = preferredTarget;
+			secondary._fromMonarch = fromMonarch;
 			Main.projectile[index].CritChance = 0;
 			Main.projectile[index].netUpdate = true;
 		}
 		return index;
 	}
 
-	internal static int SpawnArc(IEntitySource source, Vector2 position, int owner, int damage, int targetIndex, SpearKind identity)
-		=> Spawn(source, position, Vector2.Zero, owner, damage, 0f, SpearSecondaryKind.MightArc, identity, targetIndex);
+	internal static int SpawnArc(IEntitySource source, Vector2 position, int owner, int damage, int targetIndex, SpearKind identity, bool fromMonarch = false)
+		=> Spawn(source, position, Vector2.Zero, owner, damage, 0f, SpearSecondaryKind.MightArc, identity, targetIndex, fromMonarch: fromMonarch);
 
 	public override void SendExtraAI(System.IO.BinaryWriter writer)
 	{
 		writer.Write((byte)_preferredTargetOrdinal);
+		writer.Write(_fromMonarch);
 	}
 
 	public override void ReceiveExtraAI(System.IO.BinaryReader reader)
 	{
 		_preferredTargetOrdinal = reader.ReadByte();
+		_fromMonarch = reader.ReadBoolean();
 	}
 
 	public override void AI()
 	{
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers || !Main.player[Projectile.owner].active) {
+			_suppressVisualsWhileAwaitingRemoval = true;
+			Projectile.alpha = 255;
 			if (Main.netMode != NetmodeID.MultiplayerClient)
 				Projectile.Kill();
 			return;
 		}
+		_suppressVisualsWhileAwaitingRemoval = false;
 
 		if (!_initialized)
 			InitializeKind();
@@ -115,16 +124,19 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		}
 
 		SpearProfile profile = WeaponProfileRegistry.Get(Identity).Spear;
-		Color color = SecondaryKind switch {
-			SpearSecondaryKind.RetinazerBeam => new Color(238, 65, 65),
-			SpearSecondaryKind.SpazmatismFlare => new Color(80, 235, 105),
-			_ => profile.Color
-		};
-		if (!Main.dedServ)
-			Lighting.AddLight(Projectile.Center, color.ToVector3() * profile.LightStrength);
-		if (!Main.dedServ && SecondaryKind != SpearSecondaryKind.MightArc && Main.rand.NextBool(5)) {
-			Dust dust = Dust.NewDustPerfect(Projectile.Center, DustID.TintableDustLighted, -Projectile.velocity * 0.03f, 140, color, 0.7f);
-			dust.noGravity = true;
+		Color color = GetVisualColor(profile);
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile) && !_suppressVisualsWhileAwaitingRemoval) {
+			SpearLightRole lightRole = SecondaryKind switch {
+				SpearSecondaryKind.MightArc => SpearLightRole.MightArc,
+				SpearSecondaryKind.OrbitalBolt => SpearLightRole.OrbitalBolt,
+				SpearSecondaryKind.IdentityCopy => SpearLightRole.IdentityCopy,
+				_ => _fromMonarch ? SpearLightRole.MonarchSecondary : SpearLightRole.Secondary
+			};
+			SpearVisualEffects.AddLight(Projectile.Center, color, profile.LightStrength, lightRole);
+
+			bool allowDust = !_fromMonarch && SecondaryKind is not SpearSecondaryKind.MightArc and not SpearSecondaryKind.IdentityCopy and not SpearSecondaryKind.OrbitalBolt;
+			if (!Main.dedServ && allowDust && Main.rand.NextBool(10))
+				SpearVisualEffects.SpawnTintedDust(Projectile.Center, -Projectile.velocity * 0.03f, 160, color, 0.55f);
 		}
 	}
 
@@ -171,7 +183,9 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		}
 
 		Projectile.Resize(size, size);
-		Projectile.timeLeft = lifetime;
+		// Preserve the remaining lifetime received over the network. Resetting it
+		// here made delayed replicas replay an effect from the beginning.
+		Projectile.timeLeft = Math.Min(Projectile.timeLeft, lifetime);
 		Projectile.tileCollide = tileCollide;
 	}
 
@@ -300,6 +314,8 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 		return target.active && !target.friendly && !target.dontTakeDamage ? null : false;
 	}
 
+	public override bool? CanDamage() => _suppressVisualsWhileAwaitingRemoval ? false : null;
+
 	public override bool? Colliding(Rectangle projHitbox, Rectangle targetHitbox)
 	{
 		if (SecondaryKind != SpearSecondaryKind.MightArc || !TryGetTarget(out NPC target, requireLineOfSight: false))
@@ -324,14 +340,18 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 
 	public override bool PreDraw(ref Color lightColor)
 	{
-		Color color = WeaponProfileRegistry.Get(Identity).Spear.Color;
+		if (_suppressVisualsWhileAwaitingRemoval)
+			return false;
+
+		Color color = GetVisualColor(WeaponProfileRegistry.Get(Identity).Spear);
 		if (SecondaryKind == SpearSecondaryKind.IdentityCopy || SecondaryKind == SpearSecondaryKind.OrbitalBolt)
-			return DrawIdentityTexture(color, SecondaryKind == SpearSecondaryKind.OrbitalBolt ? 0.55f : 0.7f);
+			return DrawIdentityTexture(color, lightColor, SecondaryKind == SpearSecondaryKind.OrbitalBolt ? 0.5f : 0.62f);
 
 		Texture2D pixel = TextureAssets.MagicPixel.Value;
 		if (SecondaryKind == SpearSecondaryKind.MightArc && TryGetTarget(out NPC target, requireLineOfSight: false)) {
-			DrawLine(pixel, Projectile.Center, target.Center, color, 4f);
-			DrawLine(pixel, Projectile.Center + new Vector2(0f, 3f), target.Center + new Vector2(0f, -3f), Color.White * 0.7f, 1f);
+			Color arcColor = Color.Lerp(lightColor, color, 0.45f) * 0.8f;
+			DrawLine(pixel, Projectile.Center, target.Center, arcColor, 4f);
+			DrawLine(pixel, Projectile.Center + new Vector2(0f, 3f), target.Center + new Vector2(0f, -3f), lightColor * 0.55f, 1f);
 			return false;
 		}
 
@@ -342,14 +362,22 @@ public sealed class SpearSecondaryProjectile : ModProjectile
 			SpearSecondaryKind.SeekingPetal => new Vector2(9f, 5f),
 			_ => new Vector2(12f, 5f)
 		};
-		Main.EntitySpriteDraw(pixel, Projectile.Center - Main.screenPosition, null, color, Projectile.rotation, new Vector2(0.5f), scale, SpriteEffects.None);
+		Color drawColor = Color.Lerp(lightColor, color, 0.45f) * 0.8f;
+		Main.EntitySpriteDraw(pixel, Projectile.Center - Main.screenPosition, null, drawColor, Projectile.rotation, new Vector2(0.5f), scale, SpriteEffects.None);
 		return false;
 	}
 
-	private bool DrawIdentityTexture(Color color, float scale)
+	private Color GetVisualColor(SpearProfile profile) => SecondaryKind switch {
+		SpearSecondaryKind.RetinazerBeam => new Color(238, 65, 65),
+		SpearSecondaryKind.SpazmatismFlare => new Color(80, 235, 105),
+		_ => profile.Color
+	};
+
+	private bool DrawIdentityTexture(Color color, Color lightColor, float scale)
 	{
 		Texture2D texture = ModContent.Request<Texture2D>(WeaponProfileRegistry.TexturePath(Identity), AssetRequestMode.ImmediateLoad).Value;
-		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, color, Projectile.rotation, texture.Size() * 0.5f, scale, SpriteEffects.None);
+		Color drawColor = Color.Lerp(lightColor, color, 0.25f) * 0.85f;
+		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, drawColor, Projectile.rotation, texture.Size() * 0.5f, scale, SpriteEffects.None);
 		return false;
 	}
 

@@ -14,6 +14,9 @@ namespace Spears.Content.Projectiles;
 
 public sealed class SpearBurstProjectile : ModProjectile
 {
+	private bool _fromMonarch;
+	private bool _suppressVisualsWhileAwaitingRemoval;
+
 	private SpearKind Kind => (SpearKind)(int)Projectile.ai[0];
 	private float Radius => Math.Max(1f, Projectile.ai[1]);
 	private bool AppliesFear => Projectile.ai[2] > 0f;
@@ -36,12 +39,26 @@ public sealed class SpearBurstProjectile : ModProjectile
 		Projectile.hide = false;
 	}
 
-	internal static int Spawn(IEntitySource source, Vector2 center, int owner, int damage, float knockback, SpearKind kind, int radius, bool appliesFear)
+	internal static int Spawn(IEntitySource source, Vector2 center, int owner, int damage, float knockback, SpearKind kind, int radius, bool appliesFear, bool fromMonarch = false)
 	{
 		int index = Projectile.NewProjectile(source, center, Vector2.Zero, ModContent.ProjectileType<SpearBurstProjectile>(), damage, knockback, owner, (float)kind, radius, appliesFear ? 1f : 0f);
-		if (index >= 0 && index < Main.maxProjectiles)
+		if (index >= 0 && index < Main.maxProjectiles) {
 			Main.projectile[index].CritChance = 0;
+			if (Main.projectile[index].ModProjectile is SpearBurstProjectile burst)
+				burst._fromMonarch = fromMonarch;
+			Main.projectile[index].netUpdate = true;
+		}
 		return index;
+	}
+
+	public override void SendExtraAI(System.IO.BinaryWriter writer)
+	{
+		writer.Write(_fromMonarch);
+	}
+
+	public override void ReceiveExtraAI(System.IO.BinaryReader reader)
+	{
+		_fromMonarch = reader.ReadBoolean();
 	}
 
 	public override bool ShouldUpdatePosition() => false;
@@ -49,24 +66,28 @@ public sealed class SpearBurstProjectile : ModProjectile
 	public override void AI()
 	{
 		if (Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers || !Main.player[Projectile.owner].active) {
+			_suppressVisualsWhileAwaitingRemoval = true;
 			if (Main.netMode != NetmodeID.MultiplayerClient)
 				Projectile.Kill();
 			return;
 		}
+		_suppressVisualsWhileAwaitingRemoval = false;
 
 		WeaponProfile profile = WeaponProfileRegistry.Get(Kind);
-		if (!Main.dedServ)
-			Lighting.AddLight(Projectile.Center, profile.Spear.Color.ToVector3() * profile.Spear.LightStrength);
-		if (!Main.dedServ && Projectile.timeLeft == 3) {
-			for (int i = 0; i < 16; i++) {
-				Vector2 velocity = (MathHelper.TwoPi * i / 16f).ToRotationVector2() * Main.rand.NextFloat(1.5f, 4f);
-				Dust dust = Dust.NewDustPerfect(Projectile.Center + velocity.SafeNormalize(Vector2.UnitX) * Radius * 0.4f, DustID.TintableDustLighted, velocity, 100, profile.Spear.Color, 1f);
-				dust.noGravity = true;
+		if (SpearVisualEffects.IsPrimaryUpdate(Projectile))
+			SpearVisualEffects.AddLight(Projectile.Center, profile.Spear.Color, profile.Spear.LightStrength, _fromMonarch ? SpearLightRole.MonarchBurst : SpearLightRole.Burst);
+		if (!Main.dedServ && SpearVisualEffects.IsPrimaryUpdate(Projectile) && Projectile.timeLeft == 3) {
+			int dustCount = _fromMonarch ? 6 : 10;
+			for (int i = 0; i < dustCount; i++) {
+				Vector2 velocity = (MathHelper.TwoPi * i / dustCount).ToRotationVector2() * Main.rand.NextFloat(1.25f, 3.25f);
+				SpearVisualEffects.SpawnTintedDust(Projectile.Center + velocity.SafeNormalize(Vector2.UnitX) * Radius * 0.4f, velocity, 140, profile.Spear.Color, 0.75f);
 			}
 		}
 	}
 
 	public override bool? CanHitNPC(NPC target) => target.active && !target.friendly && !target.dontTakeDamage ? null : false;
+
+	public override bool? CanDamage() => _suppressVisualsWhileAwaitingRemoval ? false : null;
 
 	public override bool? Colliding(Rectangle projHitbox, Rectangle targetHitbox)
 	{
@@ -88,8 +109,12 @@ public sealed class SpearBurstProjectile : ModProjectile
 
 	public override bool PreDraw(ref Color lightColor)
 	{
+		if (_suppressVisualsWhileAwaitingRemoval)
+			return false;
+
 		Texture2D pixel = TextureAssets.MagicPixel.Value;
-		Color color = WeaponProfileRegistry.Get(Kind).Spear.Color * (Projectile.timeLeft / 3f) * 0.75f;
+		Color profileColor = WeaponProfileRegistry.Get(Kind).Spear.Color;
+		Color color = Color.Lerp(lightColor, profileColor, 0.4f) * (Projectile.timeLeft / 3f) * 0.45f;
 		const int segmentCount = 24;
 		for (int i = 0; i < segmentCount; i++) {
 			float angle = MathHelper.TwoPi * i / segmentCount;
