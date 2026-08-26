@@ -69,10 +69,17 @@ public sealed class SpearGlobalNPC : GlobalNPC
 	{
 		if (Main.netMode == NetmodeID.MultiplayerClient)
 			return;
-		if (_goldCurseBonusPercent <= 0)
+		bool changed = false;
+		if (_goldCurseBonusPercent <= 0) {
 			_goldCurseBonusPercent = RollGoldBonusPercent();
-		_goldCurseTicks = Math.Max(_goldCurseTicks, remainingTicks);
-		npc.netUpdate = true;
+			changed = true;
+		}
+		if (remainingTicks > _goldCurseTicks) {
+			_goldCurseTicks = remainingTicks;
+			changed = true;
+		}
+		if (changed)
+			npc.netUpdate = true;
 	}
 
 	internal bool TryApplyThorned(NPC npc)

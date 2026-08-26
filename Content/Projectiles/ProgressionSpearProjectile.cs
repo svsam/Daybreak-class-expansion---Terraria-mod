@@ -573,7 +573,11 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 		}
 	}
 
-	private bool IsAttachedTo(int targetIndex) => !_terminal && TargetIndex == targetIndex && State is SpearProjectileState.Lodged or SpearProjectileState.Sawing;
+	private bool IsAttachedTo(int targetIndex) =>
+		!_terminal
+		&& TargetIndex == targetIndex
+		&& (State is SpearProjectileState.Lodged or SpearProjectileState.Sawing)
+		&& TryGetLockedTarget(out _);
 
 	private void EndFromCap()
 	{
@@ -666,12 +670,14 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 
 	private bool TryGetLockedTarget(out NPC target)
 	{
-		if (!IsValidTarget(TargetIndex)) {
+		if (TargetIndex < 0 || TargetIndex >= Main.maxNPCs) {
 			target = default;
 			return false;
 		}
 
 		target = Main.npc[TargetIndex];
+		if (!target.active || target.life <= 0)
+			return false;
 		if (_lockedTargetType >= 0 && target.type != _lockedTargetType)
 			return false;
 
