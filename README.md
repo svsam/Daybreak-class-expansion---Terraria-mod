@@ -1,6 +1,6 @@
 # Spears
 
-Spears is an unofficial Terraria content mod that adds a ten-weapon progression of thrown, Daybreak-style spears. Each spear can lodge in an enemy, deal fixed damage over time, and detonate when it expires. Later weapons add themed bursts, debuffs, and secondary projectiles.
+Spears is an Terraria content mod that adds a ten-weapon progression of thrown, Daybreak-style spears. Each spear can lodge in an enemy, deal fixed damage over time, and detonate when it expires. Later weapons add themed bursts, debuffs, and secondary projectiles.
 
 The current source targets Terraria 1.4.4.9 through tModLoader 2026.06, .NET 8, and C# 12. Multiplayer-safe code paths are implemented for single-player, host-and-play, and dedicated servers; the full gameplay acceptance matrix must pass before a public release is tagged.
 
