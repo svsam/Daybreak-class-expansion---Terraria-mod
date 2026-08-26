@@ -613,6 +613,11 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	{
 		if (_terminal)
 			return;
+		// Gold is contact-only. Keep shared terminal paths from ever producing a burst for it.
+		if (AttackKind == SpearAttackKind.Gold) {
+			Terminate();
+			return;
+		}
 
 		if (HasOwnerAuthority && Profile.ExplosionDamageMultiplier > 0f && Profile.ExplosionRadius > 0) {
 			int burstDamage = Math.Max(1, (int)MathF.Round(_launchDamage * Profile.ExplosionDamageMultiplier));
