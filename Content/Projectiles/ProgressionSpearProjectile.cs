@@ -55,6 +55,8 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 	{
 		ProjectileID.Sets.TrailCacheLength[Type] = 8;
 		ProjectileID.Sets.TrailingMode[Type] = 2;
+		// Include the entire enlarged Monarch sprite when its tip leaves the screen.
+		ProjectileID.Sets.DrawScreenCheckFluff[Type] = 256;
 	}
 
 	public override void SetDefaults()
@@ -751,8 +753,11 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 			return false;
 
 		Texture2D texture = ModContent.Request<Texture2D>(WeaponProfileRegistry.TexturePath(Profile.TextureKind), AssetRequestMode.ImmediateLoad).Value;
-		Vector2 origin = texture.Size() * 0.5f;
-		float scale = AttackKind == SpearAttackKind.MonarchFinal ? 1.65f : 1f;
+		JavelinArtwork artwork = JavelinArtwork.Get(Profile.TextureKind);
+		float scale = JavelinArtwork.FlightLength / artwork.Length;
+		if (AttackKind == SpearAttackKind.MonarchFinal)
+			scale *= JavelinArtwork.MonarchScale;
+		Vector2 origin = artwork.FlightOrigin(scale);
 		Vector2 previousWorld = Projectile.Center;
 
 		if (State is SpearProjectileState.Flying or SpearProjectileState.Returning) {
@@ -764,16 +769,16 @@ public sealed class ProgressionSpearProjectile : ModProjectile
 				if (Vector2.DistanceSquared(previousWorld, world) > MaximumTrailGap * MaximumTrailGap)
 					continue;
 
-				float fade = (Projectile.oldPos.Length - i) / (float)Projectile.oldPos.Length * 0.25f;
+				float fade = (Projectile.oldPos.Length - i) / (float)Projectile.oldPos.Length * 0.12f;
 				Color trailColor = AttackKind == SpearAttackKind.MonarchFinal
 					? Main.hslToRgb(((float)Main.GameUpdateCount * 0.01f + i / (float)Projectile.oldPos.Length) % 1f, 0.85f, 0.62f) * fade
 					: Color.Lerp(lightColor, GetVisualColor(), 0.45f) * fade;
-				Main.EntitySpriteDraw(texture, world - Main.screenPosition, null, trailColor, Projectile.oldRot[i], origin, scale, SpriteEffects.None);
+				Main.EntitySpriteDraw(texture, world - Main.screenPosition, null, trailColor, Projectile.oldRot[i] + artwork.RotationOffset, origin, scale, SpriteEffects.None);
 				previousWorld = world;
 			}
 		}
 
-		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor * Projectile.Opacity, Projectile.rotation, origin, scale, SpriteEffects.None);
+		Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, null, lightColor * Projectile.Opacity, Projectile.rotation + artwork.RotationOffset, origin, scale, SpriteEffects.None);
 		return false;
 	}
 }

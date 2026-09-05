@@ -203,6 +203,11 @@ def validate_manifest(failures: list[str]) -> None:
 
 
 def validate_icons(failures: list[str]) -> None:
+    manifest = yaml.safe_load((ROOT / "DESIGN_MANIFEST.yaml").read_text(encoding="utf-8"))
+    source_paths = {
+        weapon["internal_name"]: weapon.get("art", {}).get("source_png")
+        for weapon in manifest["weapons"]
+    }
     icon_dir = ROOT / "Content" / "Items" / "Weapons" / "Spears"
     actual = {path.stem for path in icon_dir.glob("*.png")}
     expected = set(EXPECTED_ITEMS)
@@ -213,9 +218,15 @@ def validate_icons(failures: list[str]) -> None:
         path = icon_dir / f"{name}.png"
         if not path.is_file():
             continue
+        source_relative = source_paths.get(name)
+        source_path = ROOT / source_relative if isinstance(source_relative, str) else None
+        if source_path is None or not source_path.is_file():
+            fail(f"{name} is missing its original source illustration", failures)
+        elif path.read_bytes() != source_path.read_bytes():
+            fail(f"{name} runtime texture must exactly preserve its source illustration", failures)
         with Image.open(path) as image:
-            if image.size != (40, 40):
-                fail(f"{path.relative_to(ROOT)} is {image.size}, expected 40x40", failures)
+            if min(image.size) < 512 or max(image.size) > 2048:
+                fail(f"{path.relative_to(ROOT)} has an unexpected source resolution: {image.size}", failures)
             if "A" not in image.getbands():
                 fail(f"{path.relative_to(ROOT)} has no alpha channel", failures)
                 continue
@@ -323,6 +334,25 @@ def validate_tmod(path: Path, failures: list[str]) -> None:
     for required in ("Spears.dll", "Info", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt"):
         if required not in entries:
             fail(f"package is missing required entry: {required}", failures)
+
+    # tModLoader converts runtime PNGs to rawimg when packaging. Check the actual
+    # shipped pixels, including alpha, rather than only checking the source files.
+    for name in EXPECTED_ITEMS:
+        relative = f"Content/Items/Weapons/Spears/{name}"
+        payload = entries.get(relative + ".rawimg")
+        if payload is None:
+            fail(f"package is missing the runtime texture for {name}", failures)
+            continue
+        with Image.open(ROOT / (relative + ".png")) as source:
+            expected_header = struct.pack("<iii", 1, source.width, source.height)
+            expected_pixels = bytearray(source.convert("RGBA").tobytes())
+            # The packer clears hidden RGB in fully transparent pixels.
+            for index, alpha in enumerate(expected_pixels[3::4]):
+                if alpha == 0:
+                    offset = index * 4
+                    expected_pixels[offset:offset + 3] = b"\0\0\0"
+            if payload[:12] != expected_header or payload[12:] != expected_pixels:
+                fail(f"packaged {name} texture differs from its original RGBA pixels", failures)
 
 
 def validate_release_files(failures: list[str]) -> None:

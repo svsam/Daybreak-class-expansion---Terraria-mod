@@ -1,9 +1,11 @@
 using System;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Spears.Content.Players;
 using Spears.Content.Projectiles;
 using Terraria;
 using Terraria.DataStructures;
+using Terraria.GameContent;
 using Terraria.ID;
 using Terraria.ModLoader;
 
@@ -12,11 +14,6 @@ namespace Spears.Content.Common;
 public abstract class ProgressionSpearItem : ModItem
 {
 	internal abstract SpearKind SpearKind { get; }
-
-	public sealed override void SetStaticDefaults()
-	{
-		ItemID.Sets.Spears[Type] = true;
-	}
 
 	public sealed override void SetDefaults()
 	{
@@ -40,6 +37,28 @@ public abstract class ProgressionSpearItem : ModItem
 		Item.crit += profile.ExtraCrit;
 		Item.ArmorPenetration = profile.ArmorPenetration;
 		Item.ResearchUnlockCount = 1;
+	}
+
+	public sealed override bool PreDrawInInventory(SpriteBatch spriteBatch, Vector2 position, Rectangle frame, Color drawColor, Color itemColor, Vector2 origin, float scale)
+	{
+		JavelinArtwork artwork = JavelinArtwork.Get(SpearKind);
+		Texture2D texture = TextureAssets.Item[Type].Value;
+		// Terraria fits large item textures into a 32px box before calling this hook.
+		// Preserve that context's scale (hotbar, recipes, UI zoom), then allow a 45px diagonal footprint.
+		float contextScale = scale * Math.Max(frame.Width, frame.Height) / 32f;
+		float drawScale = JavelinArtwork.InventoryLength / artwork.Length * contextScale;
+		spriteBatch.Draw(texture, position, null, drawColor, artwork.RotationOffset, artwork.Center, drawScale, SpriteEffects.None, 0f);
+		return false;
+	}
+
+	public sealed override bool PreDrawInWorld(SpriteBatch spriteBatch, Color lightColor, Color alphaColor, ref float rotation, ref float scale, int whoAmI)
+	{
+		JavelinArtwork artwork = JavelinArtwork.Get(SpearKind);
+		Texture2D texture = TextureAssets.Item[Type].Value;
+		float drawScale = JavelinArtwork.DroppedLength / artwork.Length * scale;
+		Vector2 position = Item.Bottom - Main.screenPosition - new Vector2(0f, JavelinArtwork.DroppedLength * 0.5f * MathF.Sin(MathHelper.PiOver4) * scale);
+		spriteBatch.Draw(texture, position, null, alphaColor, rotation + artwork.RotationOffset, artwork.Center, drawScale, SpriteEffects.None, 0f);
+		return false;
 	}
 
 	public sealed override bool AltFunctionUse(Player player) => SpearKind == SpearKind.FlowerSpike;

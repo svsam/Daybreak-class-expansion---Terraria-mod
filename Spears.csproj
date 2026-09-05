@@ -5,6 +5,8 @@
 
 	<!-- General -->
 	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<LangVersion>12.0</LangVersion>
 		<!-- Keep portable-PDB document names reproducible and free of machine-specific paths. -->
 		<Deterministic>true</Deterministic>
 		<DebugSymbols>false</DebugSymbols>

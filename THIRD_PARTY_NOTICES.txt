@@ -12,8 +12,8 @@ https://github.com/tModLoader/tModLoader/tree/0ed7203d1cb1bfb3b0060329724d7140af
 
 Copyright 2019 tModLoader Team
 
-The repository files `icon.png` and `icon_small.png` are the default tModLoader
-"MOD" template icons from that template set and remain under the upstream MIT
+The repository file `icon_small.png` is the default tModLoader
+"MOD" template icon from that template set and remains under the upstream MIT
 license reproduced below.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -42,9 +42,9 @@ Terraria / Re-Logic
 -------------------
 
 Terraria is a trademark of Re-Logic, Inc. Terraria, its code, and its original
-assets are not licensed under this project's MIT license. Spears references
+assets are not licensed under this project's MIT license. Javelin Expansion references
 content from the user's installed copy of Terraria at runtime and does not
 redistribute extracted Terraria assets.
 
-Spears is an independent fan project. It is not endorsed by, sponsored by, or
+Javelin Expansion is an independent fan project. It is not endorsed by, sponsored by, or
 affiliated with Re-Logic, Inc. or the tModLoader team.

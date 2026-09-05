@@ -4,28 +4,30 @@ Copyright © 2026 SvSam. The source illustrations and derived icons listed below
 
 ## Item artwork
 
-The high-resolution illustrations in `spearsart/` are the project-owned source artwork. Each game-ready icon was produced as an OpenAI-assisted image transformation of the corresponding source: the original design, palette, silhouette, and lower-left-to-upper-right orientation were preserved; the background was made transparent; and the result was exported to a crisp 40×40 PNG for Terraria inventory and projectile use.
+The high-resolution illustrations in `spearsart/` are the project-owned source artwork. Version 0.3.0 copies each original transparent PNG byte-for-byte to its corresponding runtime item texture. Those same textures are used by the thrown projectiles. No repainting, resampling, stretching, or palette changes are applied to these files; original alpha and embedded metadata are retained.
 
-OpenAI tooling assisted with the conversion process but is not credited as the designer or copyright holder. The creative weapon designs and project copyright remain attributed to SvSam.
+The former 40×40 icons discarded detail. Runtime drawing now uses the originals (520×520 through 1672×941 and 1024×1536), preserving aspect ratio, with a 64-pixel inventory axis and a 128-pixel flight axis. Per-weapon tip/tail landmarks in `JavelinArtwork.cs` correct the original canvas orientation and pivot without modifying the artwork. The Monarch final strike retains its 1.65× visual multiplier. Hitboxes and gameplay balance are unchanged.
 
-| Weapon | Source illustration | Derived game icon |
+OpenAI tooling was used to explore enhanced variants, but those trials were not selected because fidelity to the originals takes priority. They are not runtime or release assets. The creative weapon designs and project copyright remain attributed to SvSam.
+
+| Weapon | Source illustration | Runtime texture |
 | --- | --- | --- |
-| Gold Spear | `spearsart/PreBossSpear.png` | `Content/Items/Weapons/Spears/GoldSpear.png` |
+| Gilded Oath | `spearsart/PreBossSpear.png` | `Content/Items/Weapons/Spears/GoldSpear.png` |
 | Night's Spine | `spearsart/Post Eater of Worlds Spear.png` | `Content/Items/Weapons/Spears/NightsSpine.png` |
-| Bloodspine | `spearsart/Post Brain of Cthulu Spear.png` | `Content/Items/Weapons/Spears/BloodSpine.png` |
+| Crimson Vow | `spearsart/Post Brain of Cthulu Spear.png` | `Content/Items/Weapons/Spears/BloodSpine.png` |
 | Hellrend | `spearsart/Post Wall of Flesh Spear.png` | `Content/Items/Weapons/Spears/Hellrend.png` |
 | Mightpiercer | `spearsart/Destroyer Spear.png` | `Content/Items/Weapons/Spears/Mightpiercer.png` |
 | Gemini Gaze | `spearsart/TwinsSpear.png` | `Content/Items/Weapons/Spears/GeminiGaze.png` |
 | Frightsteel | `spearsart/Post Mechanical Boss.png` | `Content/Items/Weapons/Spears/Frightsteel.png` |
-| FlowerSpike | `spearsart/Post Planterra Spear.png` | `Content/Items/Weapons/Spears/FlowerSpike.png` |
+| Venom Bloom | `spearsart/Post Planterra Spear.png` | `Content/Items/Weapons/Spears/FlowerSpike.png` |
 | Tepoztopilli | `spearsart/Post Golem.png` | `Content/Items/Weapons/Spears/Tepoztopilli.png` |
-| Monarch's Spear | `spearsart/Post Moon Lord Spear.png` | `Content/Items/Weapons/Spears/MonarchsSpear.png` |
+| Monarch's Ascension | `spearsart/Post Moon Lord Spear.png` | `Content/Items/Weapons/Spears/MonarchsSpear.png` |
 
-The source illustrations remain separate from the optimized icons and are excluded from the distributed `.tmod` package. Preserve the source files byte-for-byte when no art revision is intended, including any embedded authorship or C2PA metadata that may be present. Do not claim that a file contains C2PA credentials unless a verifier confirms them.
+The reference copies under `spearsart/` remain excluded from the distributed `.tmod`; the identical runtime copies are included under `Content/`. Preserve source files byte-for-byte unless an art revision is requested, including any embedded authorship or C2PA metadata. Do not claim verified credentials unless a verifier confirms them.
 
-## Mod template icons
+## Mod branding icons
 
-The repository-level `icon.png` and `icon_small.png` files are the default tModLoader "MOD" template icons, not original project artwork. Their source and MIT licensing are recorded in `THIRD_PARTY_NOTICES.txt`. Replace both together if original branding is created later.
+The existing `icon.png` and `icon_workshop.png` fiery weapon emblems are retained without changing their decoded pixels. Version 0.3.0 corrects their file encoding from WebP files named `.png` to actual PNG, so tModLoader can decode the emblem. The `icon_small.png` file retains the default tModLoader "MOD" template icon; its source and MIT licensing are recorded in `THIRD_PARTY_NOTICES.txt`.
 
 ## Procedural and runtime visuals
 

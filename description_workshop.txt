@@ -1,7 +1,9 @@
-[h1]Spears[/h1]
+[h1]Javelin Expansion[/h1]
 
-Spears adds ten throwable, Daybreak-style spears that span the full game progression. Each weapon has a unique effect, including lodging, debuffs, homing attacks, and explosions.
+Javelin Expansion adds ten throwable, Daybreak-style javelins that span the full game progression. Each weapon has a unique effect, including lodging, debuffs, homing attacks, and explosions.
 
 Supports single-player and multiplayer.
 
-Spears is an independent, unofficial Terraria fan mod. It is not endorsed by, sponsored by, or affiliated with Re-Logic or the tModLoader team.
+Javelin Expansion is an independent, unofficial Terraria fan mod. It is not endorsed by, sponsored by, or affiliated with Re-Logic or the tModLoader team.
+
+Original high-resolution weapon art, larger inventory icons, and faithful thrown-weapon sprites. Includes Gilded Oath, Night's Spine, Crimson Vow, Hellrend, Mightpiercer, Gemini Gaze, Frightsteel, Venom Bloom, Tepoztopilli, and Monarch's Ascension.

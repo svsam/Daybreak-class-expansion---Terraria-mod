@@ -14,17 +14,24 @@ target:
 
 global:
   damage_class: MeleeNoSpeed
-  item_size_pixels: [40, 40]
+  item_size_pixels: [40, 40] # Gameplay hitbox; texture resolution is independent.
+  artwork:
+    method: byte_for_byte_source_copy
+    inventory_axis_length_pixels: 64
+    dropped_axis_length_pixels: 64
+    flight_axis_length_pixels: 128
+    original_alpha_preserved: true
+    flight_tip_ahead_of_hitbox_center_pixels: 8
   use_animation_matches_use_time: true
   embedded_cap_per_owner_per_npc: 8
   standard_embedded_duration_ticks: 240
   flight_timeout_ticks: 600
   trail_cache_length: 8
   maximum_trail_gap_pixels: 160
-  crit_policy: "Direct hits may crit except Gold Spear; bursts, saw pulses, debuff-only attacks, and Monarch volley components cannot crit."
+  crit_policy: "Direct hits may crit except Gilded Oath; bursts, saw pulses, debuff-only attacks, and Monarch volley components cannot crit."
   timer_policy: "Gameplay timers advance once per game tick, independently of projectile extraUpdates."
   authority: "Owning clients spawn and steer projectile volleys; servers own NPC debuffs, Gold Curse rewards, and Thorned cooldowns."
-  embedded_eviction: "The ninth attached spear evicts the oldest; Gemini damage spears explode while debuff spears and saws disappear."
+  embedded_eviction: "The ninth attached javelin evicts the oldest; Gemini damage javelins explode while debuff javelins and saws disappear."
 
 projectile_contract:
   hitbox_pixels: [16, 16]
@@ -68,33 +75,33 @@ custom_effects:
 weapons:
   - slot: pre_boss
     internal_name: GoldSpear
-    display_name: Gold Spear
+    display_name: Gilded Oath
     balance: { base_damage: 18, use_time_ticks: 28, use_animation_ticks: 28, shoot_speed_raw: 5.0, knockback: 5.0, armor_penetration: 0, extra_crit: 0 }
     acquisition: { type: recipe, ingredients: ["10 Gold Bars", "5 Wood"], station: Work Bench }
     attack:
       components: [{ kind: Gold, damage_multiplier: 1.0 }]
       behavior: "Contact once, apply Gold Curse when eligible, then disappear; never lodge or explode."
-    art: { item_png: Content/Items/Weapons/Spears/GoldSpear.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/GoldSpear.png, projectile_texture: item_png, source_png: "spearsart/PreBossSpear.png" }
 
   - slot: post_eater_of_worlds
     internal_name: NightsSpine
-    display_name: Post-Eater of Worlds Spear
+    display_name: Night's Spine
     balance: { base_damage: 36, use_time_ticks: 25, use_animation_ticks: 25, shoot_speed_raw: 5.5, knockback: 5.5, armor_penetration: 0, extra_crit: 0 }
     acquisition: { type: recipe, predecessor: GoldSpear }
     attack:
       components: [{ kind: Corruption, damage_multiplier: 1.0 }]
       behavior: "Contact once, lodge for 240 ticks, maintain Shadowflame while lodged and for 120 ticks afterward, then disappear without exploding."
-    art: { item_png: Content/Items/Weapons/Spears/NightsSpine.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/NightsSpine.png, projectile_texture: item_png, source_png: "spearsart/Post Eater of Worlds Spear.png" }
 
   - slot: post_brain_of_cthulhu
     internal_name: BloodSpine
-    display_name: Bloodspine
+    display_name: Crimson Vow
     balance: { base_damage: 36, use_time_ticks: 25, use_animation_ticks: 25, shoot_speed_raw: 5.5, knockback: 5.5, armor_penetration: 0, extra_crit: 0 }
     acquisition: { type: recipe, predecessor: GoldSpear }
     attack:
       components: [{ kind: Crimson, damage_multiplier: 1.0 }]
       behavior: "Contact once, lodge for 240 ticks, maintain Ichor while lodged and for 120 ticks afterward, then disappear without exploding."
-    art: { item_png: Content/Items/Weapons/Spears/BloodSpine.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/BloodSpine.png, projectile_texture: item_png, source_png: "spearsart/Post Brain of Cthulu Spear.png" }
 
   - slot: post_wall_of_flesh
     internal_name: Hellrend
@@ -107,7 +114,7 @@ weapons:
       component_damage_multipliers: [0.65, 1.0, 0.65]
       explosion: { damage_multiplier: 0.75, radius_pixels: 48, triggers: [npc, tile], can_crit: false }
       debuff: { name: Hellfire, duration_ticks: 180, direct_npc_contact_only: true }
-    art: { item_png: Content/Items/Weapons/Spears/Hellrend.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/Hellrend.png, projectile_texture: item_png, source_png: "spearsart/Post Wall of Flesh Spear.png" }
 
   - slot: post_destroyer
     internal_name: Mightpiercer
@@ -121,11 +128,11 @@ weapons:
       return_hit_damage_multiplier: 1.25
       return_turn_rate_degrees_per_tick: 12
       behavior: "Lock one target, suppress damage while penetrating and overshooting, hit that same target on return, then disappear."
-    art: { item_png: Content/Items/Weapons/Spears/Mightpiercer.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/Mightpiercer.png, projectile_texture: item_png, source_png: "spearsart/Destroyer Spear.png" }
 
   - slot: post_twins
     internal_name: GeminiGaze
-    display_name: Post-Twins Spear
+    display_name: Gemini Gaze
     balance: { base_damage: 108, use_time_ticks: 21, use_animation_ticks: 21, shoot_speed_raw: 7.5, knockback: 6.5, armor_penetration: 8, extra_crit: 0 }
     acquisition: { type: recipe, predecessor: Mightpiercer }
     attack:
@@ -133,11 +140,11 @@ weapons:
       components:
         - { kind: GeminiInferno, health_damage: 0, debuff: Cursed Inferno, debuff_duration_ticks: 240, terminal: disappear_on_contact }
         - { kind: GeminiDamage, damage_multiplier: 1.0, lodged_duration_ticks: 240, explosion_damage_multiplier: 0.85, explosion_radius_pixels: 56, tile_explodes: true }
-    art: { item_png: Content/Items/Weapons/Spears/GeminiGaze.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/GeminiGaze.png, projectile_texture: item_png, source_png: "spearsart/TwinsSpear.png" }
 
   - slot: post_skeletron_prime
     internal_name: Frightsteel
-    display_name: Post-Skeletron Prime Spear
+    display_name: Frightsteel
     balance: { base_damage: 132, use_time_ticks: 20, use_animation_ticks: 20, shoot_speed_raw: 8.0, knockback: 7.0, armor_penetration: 12, extra_crit: 0 }
     acquisition: { type: recipe, predecessor: GeminiGaze }
     attack:
@@ -146,17 +153,17 @@ weapons:
         - { kind: FrightDestroyer, first_hit_damage_multiplier: 0.65, return_hit_damage_multiplier: 0.8, overshoot_distance_pixels: 96 }
         - { kind: FrightInferno, health_damage: 0, debuff: Cursed Inferno, debuff_duration_ticks: 240 }
         - { kind: PrimeSaw, impact_damage_multiplier: 0.75, lodged_duration_ticks: 240, pulse_interval_ticks: 30, pulse_count: 8, pulse_damage_multiplier: 0.15, debuff: Bleeding, debuff_duration_ticks: 600, explodes: false }
-    art: { item_png: Content/Items/Weapons/Spears/Frightsteel.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/Frightsteel.png, projectile_texture: item_png, source_png: "spearsart/Post Mechanical Boss.png" }
 
   - slot: post_plantera
     internal_name: FlowerSpike
-    display_name: FlowerSpike
+    display_name: Venom Bloom
     balance: { base_damage: 150, use_time_ticks: 19, use_animation_ticks: 19, shoot_speed_raw: 8.5, knockback: 6.75, armor_penetration: 10, extra_crit: 0 }
     acquisition: { type: recipe, predecessor: Frightsteel }
     attack:
       primary: { damage_multiplier: 1.0, lodged_duration_ticks: 240, debuff: Venom, residual_debuff_ticks: 120, explodes: false }
       alternate: { health_damage: 0, debuff: Poisoned, debuff_duration_ticks: 480, crowd_control: Thorned }
-    art: { item_png: Content/Items/Weapons/Spears/FlowerSpike.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/FlowerSpike.png, projectile_texture: item_png, source_png: "spearsart/Post Planterra Spear.png" }
 
   - slot: post_golem
     internal_name: Tepoztopilli
@@ -167,15 +174,15 @@ weapons:
       components: [{ kind: Tepoztopilli, damage_multiplier: 1.0 }]
       explosion: { damage_multiplier: 0.8, radius_pixels: 72, triggers: [npc, tile], can_crit: false }
       debuff: { name: On Fire!, duration_ticks: 480, direct_npc_contact_only: true }
-    art: { item_png: Content/Items/Weapons/Spears/Tepoztopilli.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/Tepoztopilli.png, projectile_texture: item_png, source_png: "spearsart/Post Golem.png" }
 
   - slot: post_moon_lord
     internal_name: MonarchsSpear
-    display_name: Monarch's Spear
+    display_name: Monarch's Ascension
     balance: { base_damage: 500, use_time_ticks: 16, use_animation_ticks: 16, shoot_speed_raw: 10.0, knockback: 8.0, armor_penetration: 30, extra_crit: 10 }
     acquisition: { type: recipe, complete_progression_recipe: true }
     attack:
-      combo: "Uses one through five launch a volley; use six launches the final spear and resets."
+      combo: "Uses one through five launch a volley; use six launches the final javelin and resets."
       volley:
         component_damage_multiplier: 0.2
         homing_range_pixels: 1000
@@ -192,7 +199,7 @@ weapons:
         tile_collision: false
         penetration: 1
       reset_conditions: [sixth_use, death, disconnect, held_item_change]
-    art: { item_png: Content/Items/Weapons/Spears/MonarchsSpear.png, projectile_texture: item_png }
+    art: { item_png: Content/Items/Weapons/Spears/MonarchsSpear.png, projectile_texture: item_png, source_png: "spearsart/Post Moon Lord Spear.png" }
 
 validation:
   build: { warnings_allowed: 0, target_framework: net8.0, language_version: 12 }
